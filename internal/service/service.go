@@ -281,6 +281,11 @@ func serviceFiles(c *config.Config, configPath string) ([]string, error) {
 		add(p.TLS.CAFile, dir)
 	}
 	for _, p := range c.Auth.InboundPeers {
+		// A disabled identity's token sources are never read, so its
+		// files may already be gone.
+		if !p.IsEnabled() {
+			continue
+		}
 		for _, f := range p.TokenFiles {
 			add(f, dir)
 		}
@@ -338,7 +343,11 @@ func safeEnvName(name string) bool {
 	}
 	return !strings.HasPrefix(upper, "LD_") && !strings.HasPrefix(upper, "DYLD_")
 }
-func saveEnvironment(p Plan) (bool, error) {
+
+// saveEnvironment writes the credential snapshot unless an identical one
+// exists. created reports whether this call created the file, also when it
+// returns an error; the caller removes a created file on failure.
+func saveEnvironment(p Plan) (created bool, err error) {
 	if p.EnvironmentFile == "" {
 		return false, nil
 	}
@@ -362,7 +371,7 @@ func saveEnvironment(p Plan) (bool, error) {
 	} else if !os.IsNotExist(e) {
 		return false, e
 	}
-	return true, writeEnvironmentFile(p, b)
+	return writeEnvironmentFile(p, b)
 }
 
 // LoadEnvironment imports only explicitly referenced credential names from the

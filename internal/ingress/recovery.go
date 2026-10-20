@@ -227,6 +227,7 @@ func (s *ingressSession) recover(cause error, strategy string) (success bool) {
 			slog.Info("session recovered", "session", shortID(s.sid), "role", "ingress", "peer", s.p.ID, "endpoint", ep.ID, "owner", shortID(s.owner), "epoch", newEpoch, "from", oldMode(old), "transport", mode, "resume_id", shortID(req.ResumeRequestID), "elapsed_ms", time.Since(started).Milliseconds())
 			s.mu.Lock()
 			s.faultTime = time.Time{}
+			s.faultSource, s.faultReason = "", ""
 			s.recoveryAttempts = 0
 			s.mu.Unlock()
 			s.startGeneration(g)

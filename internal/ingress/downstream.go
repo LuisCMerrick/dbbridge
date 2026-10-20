@@ -1,7 +1,6 @@
 package ingress
 
 import (
-	"fmt"
 	"io"
 	"sync/atomic"
 	"time"
@@ -40,14 +39,14 @@ func (s *ingressSession) receive(g *generation) {
 			msg, e = s.readWire(g, time.Time{})
 		}
 		if e != nil {
-			s.fault(g, e, false)
+			s.fault(g, observability.FaultData, e, false)
 			return
 		}
 		release = msg.release
 		switch msg.kind {
 		case "ping":
 			if msg.ctrl.Nonce == "" {
-				s.fault(g, transport.ErrProtocol, true)
+				s.fault(g, observability.FaultData, transport.ErrProtocol, true)
 				return
 			}
 			s.mu.Lock()
@@ -70,7 +69,7 @@ func (s *ingressSession) receive(g *generation) {
 			}
 			s.mu.Unlock()
 			if e != nil {
-				s.fault(g, e, true)
+				s.fault(g, observability.FaultData, e, true)
 				return
 			}
 		case "data", "fin":
@@ -90,13 +89,13 @@ func (s *ingressSession) receive(g *generation) {
 			}
 			if alreadyFin {
 				s.gate <- struct{}{}
-				s.fault(g, transport.ErrProtocol, true)
+				s.fault(g, observability.FaultData, transport.ErrProtocol, true)
 				return
 			}
 			if msg.kind == "data" {
 				if msg.offset != want {
 					s.gate <- struct{}{}
-					s.fault(g, transport.ErrProtocol, true)
+					s.fault(g, observability.FaultData, transport.ErrProtocol, true)
 					return
 				}
 				s.mu.Lock()
@@ -120,7 +119,7 @@ func (s *ingressSession) receive(g *generation) {
 							we = io.ErrNoProgress
 						}
 						s.gate <- struct{}{}
-						s.fault(g, localSocketError(we), true)
+						s.fault(g, observability.FaultData, localSocketError(we), true)
 						return
 					}
 				}
@@ -136,13 +135,13 @@ func (s *ingressSession) receive(g *generation) {
 				off, e := protocol.Offset(msg.ctrl.FinalOffset)
 				if e != nil || off != want {
 					s.gate <- struct{}{}
-					s.fault(g, transport.ErrProtocol, true)
+					s.fault(g, observability.FaultData, transport.ErrProtocol, true)
 					return
 				}
 				if c, ok := s.conn.(interface{ CloseWrite() error }); ok {
 					if e = c.CloseWrite(); e != nil {
 						s.gate <- struct{}{}
-						s.fault(g, localSocketError(e), true)
+						s.fault(g, observability.FaultData, localSocketError(e), true)
 						return
 					}
 				}
@@ -154,10 +153,10 @@ func (s *ingressSession) receive(g *generation) {
 			}
 			s.gate <- struct{}{}
 		case "error":
-			s.fault(g, fmt.Errorf("remote %s", msg.ctrl.Code), true)
+			s.fault(g, observability.FaultData, &transport.RemoteError{Code: msg.ctrl.Code, Trusted: true, SessionClosed: true}, true)
 			return
 		default:
-			s.fault(g, transport.ErrProtocol, true)
+			s.fault(g, observability.FaultData, transport.ErrProtocol, true)
 			return
 		}
 	}

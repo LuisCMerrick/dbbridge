@@ -23,10 +23,10 @@ func environmentReader(account string) (*windows.SID, error) {
 	return windows.CreateWellKnownSid(windows.WELL_KNOWN_SID_TYPE(kind))
 }
 
-func writeEnvironmentFile(p Plan, data []byte) error {
+func writeEnvironmentFile(p Plan, data []byte) (bool, error) {
 	sid, err := environmentReader(p.Account)
 	if err != nil {
-		return err
+		return false, err
 	}
 	return fileutil.WriteNewForSID(p.EnvironmentFile, data, sid)
 }

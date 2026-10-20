@@ -74,6 +74,10 @@ func (c *TripleTransportClient) validateCreateResponse(r *protocol.CreateSession
 		return bad("limits.up_window_bytes")
 	case r.Limits.DownBufferBytes <= 0 || r.Limits.DownBufferBytes > limits.DownBufferBytes:
 		return bad("limits.down_buffer_bytes")
+	case int64(r.Limits.MaxFrameSize) > r.Limits.UpWindowBytes || int64(r.Limits.MaxFrameSize) > r.Limits.DownBufferBytes:
+		// A frame must fit the negotiated upstream window and downstream
+		// buffer, as the egress enforces when it negotiates.
+		return bad("limits.max_frame_size exceeds up_window_bytes or down_buffer_bytes")
 	case r.Limits.UpReceiptLimit <= r.Limits.UpMaxInflightFrames:
 		// Below inflight+1 the peer would refuse frames the negotiated
 		// window allows.

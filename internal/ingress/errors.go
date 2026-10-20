@@ -130,6 +130,10 @@ func reasonCategory(e error) string {
 			return "dial_failed"
 		case protocol.ErrDraining:
 			return "draining"
+		case protocol.ErrBufferExhausted:
+			return "buffer"
+		case protocol.ErrResumeExpired:
+			return "timeout"
 		}
 	}
 	if e != nil {

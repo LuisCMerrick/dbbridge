@@ -109,6 +109,10 @@ func (s *SSESubscriber) NextEventWithProgress(parent context.Context, timeout ti
 			refund()
 		}
 	}()
+	// onData marks progress of an event: it resets the read timer and
+	// reports progress to the caller. Comments, blank separators and fields
+	// the parser ignores are not progress, so a proxy that only writes SSE
+	// comments cannot keep a dead stream alive.
 	onData := func() {
 		if timer != nil {
 			timer.Reset(timeout)
@@ -117,6 +121,7 @@ func (s *SSESubscriber) NextEventWithProgress(parent context.Context, timeout ti
 			progress()
 		}
 	}
+	idle := func() {}
 	var ev SSEEvent
 	var data []string
 	seen := map[string]bool{}
@@ -126,12 +131,12 @@ func (s *SSESubscriber) NextEventWithProgress(parent context.Context, timeout ti
 		refund()
 	}
 	for {
-		first, e := s.peekLineStart(onData)
+		first, e := s.peekLineStart()
 		if e != nil {
 			return nil, e
 		}
 		if first == '\r' || first == '\n' {
-			if _, e := s.readSSELine(nil, 0, onData); e != nil {
+			if _, e := s.readSSELine(nil, 0, idle); e != nil {
 				return nil, e
 			}
 			// WHATWG: an event whose data buffer is empty is not dispatched;
@@ -177,7 +182,7 @@ func (s *SSESubscriber) NextEventWithProgress(parent context.Context, timeout ti
 		if first == ':' {
 			// Comments are discarded as they stream in: never buffered, never
 			// charged and not counted toward the event size, but still bounded.
-			if _, e := s.readSSELine(nil, limit, onData); e != nil {
+			if _, e := s.readSSELine(nil, limit, idle); e != nil {
 				return nil, e
 			}
 			continue
@@ -207,7 +212,13 @@ func (s *SSESubscriber) NextEventWithProgress(parent context.Context, timeout ti
 		if e := reserve(charge(capBytes)); e != nil {
 			return nil, e
 		}
-		line, e := s.readSSELine(&total, capBytes, onData)
+		// Data lines may be large and arrive slowly, so they report progress
+		// as they stream in; other fields are short and count once parsed.
+		lineProgress := idle
+		if isData {
+			lineProgress = onData
+		}
+		line, e := s.readSSELine(&total, capBytes, lineProgress)
 		if e != nil {
 			return nil, e
 		}
@@ -231,6 +242,7 @@ func (s *SSESubscriber) NextEventWithProgress(parent context.Context, timeout ti
 				return nil, ErrProtocol
 			}
 			seen[key] = true
+			onData()
 			if key == "event" {
 				ev.Event = value
 			} else {
@@ -330,7 +342,7 @@ func (s *SSESubscriber) peekDeclaredDataLine() (n int, ok bool, err error) {
 
 // peekLineStart returns the first byte of the next line without consuming it,
 // skipping the LF of a CRLF pair whose CR ended the previous line.
-func (s *SSESubscriber) peekLineStart(onData func()) (byte, error) {
+func (s *SSESubscriber) peekLineStart() (byte, error) {
 	for {
 		b, e := s.reader.Peek(1)
 		if len(b) == 0 {
@@ -343,7 +355,6 @@ func (s *SSESubscriber) peekLineStart(onData func()) (byte, error) {
 			s.pendingLF = false
 			if b[0] == '\n' {
 				_, _ = s.reader.Discard(1)
-				onData()
 				continue
 			}
 		}

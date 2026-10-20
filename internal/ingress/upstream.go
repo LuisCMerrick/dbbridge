@@ -104,7 +104,7 @@ func (s *ingressSession) readLocal() {
 			}
 			remaining := s.m.cfg.Transport.BackpressureTimeout - time.Since(blockedSince)
 			if remaining <= 0 {
-				s.fault(nil, context.DeadlineExceeded, true)
+				s.fault(nil, observability.FaultUpstream, context.DeadlineExceeded, true)
 				return
 			}
 			timer := time.NewTimer(remaining)
@@ -113,7 +113,7 @@ func (s *ingressSession) readLocal() {
 				timer.Stop()
 				return
 			case <-timer.C:
-				s.fault(nil, context.DeadlineExceeded, true)
+				s.fault(nil, observability.FaultUpstream, context.DeadlineExceeded, true)
 				return
 			case <-ch:
 				timer.Stop()
@@ -125,7 +125,7 @@ func (s *ingressSession) readLocal() {
 		e := s.m.cfg.Resources.Payload.Take(ctx, int64(maxFrame))
 		cancel()
 		if e != nil {
-			s.fault(nil, e, true)
+			s.fault(nil, observability.FaultUpstream, e, true)
 			return
 		}
 		// The payload budget is reserved before the read (backpressure), but
@@ -138,7 +138,7 @@ func (s *ingressSession) readLocal() {
 			if s.upNext > math.MaxUint64-uint64(n) {
 				s.mu.Unlock()
 				s.m.cfg.Resources.Payload.Put(int64(maxFrame))
-				s.fault(nil, transport.ErrProtocol, true)
+				s.fault(nil, observability.FaultUpstream, transport.ErrProtocol, true)
 				return
 			}
 			f := &retainedChunk{offset: s.upNext, data: buf[:n], cost: int64(capacity)}
@@ -162,7 +162,7 @@ func (s *ingressSession) readLocal() {
 		}
 		if e != nil {
 			if e != io.EOF {
-				s.fault(nil, localSocketError(e), true)
+				s.fault(nil, observability.FaultUpstream, localSocketError(e), true)
 			}
 			return
 		}
@@ -217,7 +217,7 @@ func (s *ingressSession) send(g *generation) {
 						}
 					}
 					s.mu.Unlock()
-					s.fault(g, e, false)
+					s.fault(g, observability.FaultUpstream, e, false)
 					return
 				}
 			} else {
@@ -244,7 +244,7 @@ func (s *ingressSession) send(g *generation) {
 							}
 							s.mu.Unlock()
 							if pe != nil {
-								s.fault(g, pe, true)
+								s.fault(g, observability.FaultUpstream, pe, true)
 							}
 							return
 						}
@@ -257,7 +257,7 @@ func (s *ingressSession) send(g *generation) {
 								continue
 							}
 						}
-						s.fault(g, e, false)
+						s.fault(g, observability.FaultUpstream, e, false)
 						return
 					}
 				}(f)
@@ -274,7 +274,7 @@ func (s *ingressSession) send(g *generation) {
 			}
 			cancel()
 			if e != nil {
-				s.fault(g, e, false)
+				s.fault(g, observability.FaultUpstream, e, false)
 				return
 			}
 			finSent = true

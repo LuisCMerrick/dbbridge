@@ -29,6 +29,9 @@ func (c *Config) applyTransportDefaults() error {
 	if c.Transport.H2PoolSize <= 0 {
 		c.Transport.H2PoolSize = 4
 	}
+	if c.Transport.H2PoolSize > MaxH2PoolSize {
+		return fmt.Errorf("transport.h2_pool_size (%d) must be at most %d", c.Transport.H2PoolSize, MaxH2PoolSize)
+	}
 
 	frameSize, err := parseByteSize(c.Transport.FrameSizeRaw, 32*1024)
 	if err != nil {

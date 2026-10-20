@@ -2,6 +2,7 @@ package transport
 
 import (
 	"context"
+	"dbbridge/internal/config"
 	"dbbridge/internal/resource"
 	"fmt"
 	"net"
@@ -131,24 +132,26 @@ func (c *TripleTransportClient) dial(ctx context.Context, network, address strin
 	return resource.LeaseConn(conn, release), nil
 }
 
-// nextSSEShard picks the SSE pool shard for the next subscription, creating
-// the h2_pool_size shards on first use.
+// nextSSEShard picks the SSE pool shard for the next subscription in round
+// robin. Shards are created one at a time as the rotation first reaches them,
+// up to h2_pool_size (at most config.MaxH2PoolSize).
 func (c *TripleTransportClient) nextSSEShard() *http.Client {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if len(c.sseShards) == 0 {
-		n := c.tCfg.H2PoolSize
-		if n <= 0 {
-			n = 4
-		}
-		c.sseShards = append(c.sseShards, c.sseClient)
-		for i := 1; i < n; i++ {
-			tr := c.sseClient.Transport.(*http.Transport).Clone()
-			c.bindDial(tr, false)
-			c.sseShards = append(c.sseShards, &http.Client{Transport: tr, CheckRedirect: c.sseClient.CheckRedirect})
-		}
+	n := c.tCfg.H2PoolSize
+	if n <= 0 {
+		n = 4
 	}
-	selected := c.sseShards[c.sseNext%uint64(len(c.sseShards))]
+	n = min(n, config.MaxH2PoolSize)
+	if len(c.sseShards) == 0 {
+		c.sseShards = append(c.sseShards, c.sseClient)
+	}
+	i := int(c.sseNext % uint64(n))
 	c.sseNext++
-	return selected
+	if i == len(c.sseShards) {
+		tr := c.sseClient.Transport.(*http.Transport).Clone()
+		c.bindDial(tr, false)
+		c.sseShards = append(c.sseShards, &http.Client{Transport: tr, CheckRedirect: c.sseClient.CheckRedirect})
+	}
+	return c.sseShards[i]
 }

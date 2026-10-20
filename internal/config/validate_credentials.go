@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
+	"math"
 	"path/filepath"
 	"sort"
 )
@@ -59,7 +60,13 @@ func ValidateCredentialSnapshot(f *AuthConfigFile, cc CredentialConstraints) ([]
 		}
 		if ip.IsEnabled() {
 			enabledInbound++
-			inboundQuota += ip.MaxSessions
+			// Saturating sum: quotas are positive, and a wrapped sum
+			// would pass the partition check below.
+			if ip.MaxSessions > math.MaxInt-inboundQuota {
+				inboundQuota = math.MaxInt
+			} else {
+				inboundQuota += max(ip.MaxSessions, 0)
+			}
 			if cc.MaxSessions > 0 && ip.MaxSessions > cc.MaxSessions {
 				warnings = append(warnings, fmt.Sprintf("inbound peer %s max_sessions (%d) exceeds limits.max_sessions (%d); the global limit applies", ip.ID, ip.MaxSessions, cc.MaxSessions))
 			}

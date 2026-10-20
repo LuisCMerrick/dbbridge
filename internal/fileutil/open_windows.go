@@ -49,12 +49,16 @@ func openPrivateFile(path string, reader *windows.SID) (*os.File, error) {
 
 // WriteNewForSID grants the selected service account read access at creation,
 // while keeping the owner/Administrators/SYSTEM grants and protected DACL.
-func WriteNewForSID(path string, data []byte, reader *windows.SID) error {
+// created reports whether this call left a new file at path, as for WriteNew.
+func WriteNewForSID(path string, data []byte, reader *windows.SID) (created bool, err error) {
 	f, err := openPrivateFile(path, reader)
 	if err != nil {
-		return err
+		return false, err
 	}
-	return writeNewFile(f, data)
+	if err = writeNewFile(f, data); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // ErrNullDACL reports a file without a DACL, which grants everyone access:

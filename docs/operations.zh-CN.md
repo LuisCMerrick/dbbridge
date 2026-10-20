@@ -184,6 +184,7 @@ dbbridge version <version> (commit: <commit>, built: <date>, runtime: <go versio
 | `dbb_remote_cleanup_failed_total` | counter | I | 失败的远端 DELETE 次数。 |
 | `dbb_remote_cleanup_unknown_total` | counter | I | 结果未知的远端 DELETE 次数。 |
 | `dbb_session_events_total{role,event,reason,from,to}` | counter | 两端 | 生命周期事件；标签取值见 §6。 |
+| `dbb_ingress_faults_total{source,reason}` | counter | I | 按检测位置统计的载体故障：`data`（读取 WS 或 SSE 载体）、`upstream`（发送上行帧或等待其确认）、`control`（控制 API）、`liveness`（`failure_detect_timeout` 内没有会话流量）。 |
 | `dbb_operation_duration_seconds{role,phase}` | histogram | 两端 | `barrier`、`local_close`、`recovery`、`cleanup`、`probe`、`precheck`、`attach`、`control` 的耗时；分桶 0.001 … 60 s。 |
 | `dbb_endpoint_state{peer,endpoint,state}` | gauge | I | endpoint 当前状态为 1：`UNKNOWN`、`HEALTHY`、`UNHEALTHY`、`MISMATCHED`。 |
 | `dbb_phase_duration_seconds{peer,endpoint,phase,success}` | summary | I | 按 endpoint 统计 `probe`、`precheck`、`attach`、`control` 以及每次恢复尝试（`recovery`）的耗时。 |
@@ -231,7 +232,7 @@ dbbridge version <version> (commit: <commit>, built: <date>, runtime: <go versio
 | `ingress connection rejected: local budget exhausted` | WARN | 一个本地客户端被拒绝。 |
 | `ingress listener is bound to a non-loopback address; ...` | WARN | |
 
-**`session terminated` 的字段：**`session`、`role=ingress`、`peer`、`endpoint`、`owner`（Egress 实例）、`epoch`、`transport`、`recovery_enabled`、`attempts`、`deadline`（恢复截止时间；未开始恢复时为空）、`outcome_unknown`、`reason`、`local_close_ms`、`fault_time`、`terminal_time`、`local_closed_time`。会话创建之前结束时，`session`、`endpoint` 和 `transport` 为空。
+**`session terminated` 的字段：**`session`、`role=ingress`、`peer`、`endpoint`、`owner`（Egress 实例）、`epoch`、`transport`、`recovery_enabled`、`attempts`、`deadline`（恢复截止时间；未开始恢复时为空）、`outcome_unknown`、`reason`、`fault_source` 和 `fault_reason`（最近一个故障周期的首个故障；会话未经故障结束时为空）、`local_close_ms`、`fault_time`、`terminal_time`、`local_closed_time`。会话创建之前结束时，`session`、`endpoint` 和 `transport` 为空。
 
 **`reason` 取值**（日志字段及 `dbb_session_events_total{reason}`）：
 

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"dbbridge/internal/link"
+	"dbbridge/internal/observability"
 	"dbbridge/internal/protocol"
 	"dbbridge/internal/transport"
 	"github.com/gorilla/websocket"
@@ -324,11 +325,11 @@ func (s *ingressSession) watchActivity(g *generation) {
 						stall = 120 * time.Second
 					}
 					if time.Since(upSince) >= stall {
-						s.fault(g, errors.New("upstream backpressure timeout"), true)
+						s.fault(g, observability.FaultUpstream, errors.New("upstream backpressure timeout"), true)
 						return
 					}
 				} else if time.Since(upSince) >= detect {
-					s.fault(g, fmt.Errorf("upstream confirmation timeout: %w", context.DeadlineExceeded), false)
+					s.fault(g, observability.FaultUpstream, fmt.Errorf("upstream confirmation timeout: %w", context.DeadlineExceeded), false)
 					return
 				}
 			}
@@ -341,13 +342,13 @@ func (s *ingressSession) watchActivity(g *generation) {
 					blockedAt = last
 				}
 				if !blockedAt.IsZero() && time.Since(blockedAt) >= stall {
-					s.fault(g, errors.New("backpressure timeout"), true)
+					s.fault(g, observability.FaultData, errors.New("backpressure timeout"), true)
 					return
 				}
 				continue
 			}
 			if time.Since(last) >= detect {
-				s.fault(g, context.DeadlineExceeded, false)
+				s.fault(g, observability.FaultLiveness, fmt.Errorf("no session traffic: %w", context.DeadlineExceeded), false)
 				return
 			}
 		}

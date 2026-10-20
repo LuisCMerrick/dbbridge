@@ -9,10 +9,10 @@ import (
 
 func TestWriteNewDoesNotReplaceExistingFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "secret")
-	if err := WriteNew(path, []byte("original"), 0600); err != nil {
+	if _, err := WriteNew(path, []byte("original"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := WriteNew(path, []byte("replacement"), 0600); err == nil {
+	if created, err := WriteNew(path, []byte("replacement"), 0600); err == nil || created {
 		t.Fatal("existing secret was replaced")
 	}
 	b, err := os.ReadFile(path)

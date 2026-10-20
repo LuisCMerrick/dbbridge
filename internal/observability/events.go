@@ -10,6 +10,7 @@ import (
 )
 
 type eventKey struct{ role, kind, reason, from, to string }
+type faultKey struct{ source, reason string }
 type durationKey struct{ role, phase string }
 type durationValue struct {
 	count   uint64
@@ -20,8 +21,28 @@ type durationValue struct {
 var eventStats = struct {
 	sync.Mutex
 	events    map[eventKey]uint64
+	faults    map[faultKey]uint64
 	durations map[durationKey]durationValue
-}{events: map[eventKey]uint64{}, durations: map[durationKey]durationValue{}}
+}{events: map[eventKey]uint64{}, faults: map[faultKey]uint64{}, durations: map[durationKey]durationValue{}}
+
+// Fault sources: where the ingress detected a carrier fault.
+const (
+	FaultData     = "data"     // reading the downstream carrier (WS or SSE)
+	FaultUpstream = "upstream" // sending upstream frames or their confirmation
+	FaultControl  = "control"  // the separate control API (ACK, FIN)
+	FaultLiveness = "liveness" // no session-bound traffic within failure_detect_timeout
+)
+
+// RecordFault counts a carrier fault detected by the ingress by its source
+// and reason category.
+func RecordFault(source, reason string) {
+	source = oneOf(source, FaultData, FaultUpstream, FaultControl, FaultLiveness)
+	reason = oneOf(reason, "normal", "network", "timeout", "protocol", "unauthorized", "forbidden", "instance", "offset", "quota", "backend_lost", "barrier", "buffer", "failed", "unknown", "transport", "shutdown", "local_socket", "dial_failed", "draining")
+	eventStats.Lock()
+	eventStats.faults[faultKey{source, reason}]++
+	eventStats.Unlock()
+}
+
 var durationBounds = [10]float64{.001, .005, .01, .05, .1, .5, 1, 5, 30, 60}
 
 func oneOf(value string, allowed ...string) string {
@@ -65,6 +86,10 @@ func WriteEventMetrics(w io.Writer) {
 	for k, v := range eventStats.events {
 		events[k] = v
 	}
+	faults := make(map[faultKey]uint64, len(eventStats.faults))
+	for k, v := range eventStats.faults {
+		faults[k] = v
+	}
 	durations := make(map[durationKey]durationValue, len(eventStats.durations))
 	for k, v := range eventStats.durations {
 		durations[k] = v
@@ -82,6 +107,21 @@ func WriteEventMetrics(w io.Writer) {
 	fmt.Fprintln(w, "# TYPE dbb_session_events_total counter")
 	for _, k := range eventKeys {
 		fmt.Fprintf(w, "dbb_session_events_total{role=%q,event=%q,reason=%q,from=%q,to=%q} %d\n", k.role, k.kind, k.reason, k.from, k.to, events[k])
+	}
+	faultKeys := make([]faultKey, 0, len(faults))
+	for k := range faults {
+		faultKeys = append(faultKeys, k)
+	}
+	sort.Slice(faultKeys, func(i, j int) bool {
+		if faultKeys[i].source != faultKeys[j].source {
+			return faultKeys[i].source < faultKeys[j].source
+		}
+		return faultKeys[i].reason < faultKeys[j].reason
+	})
+	fmt.Fprintln(w, "# HELP dbb_ingress_faults_total Carrier faults detected by the ingress, by source and reason")
+	fmt.Fprintln(w, "# TYPE dbb_ingress_faults_total counter")
+	for _, k := range faultKeys {
+		fmt.Fprintf(w, "dbb_ingress_faults_total{source=%q,reason=%q} %d\n", k.source, k.reason, faults[k])
 	}
 	durationKeys := make([]durationKey, 0, len(durations))
 	for k := range durations {

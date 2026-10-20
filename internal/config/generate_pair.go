@@ -209,7 +209,7 @@ type pairOutput struct {
 
 // The bool prevents deleting a new token after successful publication, or when
 // rollback itself fails and a configuration might still reference that token.
-func publishPair(outputs []pairOutput, force bool, writeNew func(string, []byte, fs.FileMode) error) (keepToken bool, err error) {
+func publishPair(outputs []pairOutput, force bool, writeNew func(string, []byte, fs.FileMode) (bool, error)) (keepToken bool, err error) {
 	defer func() {
 		if err == nil || keepToken {
 			return
@@ -252,10 +252,13 @@ func publishPair(outputs []pairOutput, force bool, writeNew func(string, []byte,
 		} else if !os.IsNotExist(e) {
 			return false, e
 		}
-		if err = writeNew(item.path, item.data, 0600); err != nil {
+		// A file this call created is rolled back even when its
+		// publication failed after creation (for example a failed
+		// directory sync).
+		item.written, err = writeNew(item.path, item.data, 0600)
+		if err != nil {
 			return false, err
 		}
-		item.written = true
 		if previous != nil {
 			if err = fileutil.PreserveAttributes(previous, item.path); err != nil {
 				return false, fmt.Errorf("keep permissions of %s: %w", item.path, err)

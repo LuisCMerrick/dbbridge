@@ -63,6 +63,10 @@ type AdminConfig struct {
 // assigns by default (127.0.0.1:18080 and 127.0.0.1:18081).
 const DefaultAdminListen = "127.0.0.1:18090"
 
+// MaxH2PoolSize bounds transport.h2_pool_size, the number of HTTP client
+// shards per endpoint for SSE subscriptions.
+const MaxH2PoolSize = 64
+
 // ShutdownTeardownBudget bounds the work after the drain phase
 // (transport.shutdown_timeout): closing ingress sessions with remote cleanup,
 // the egress server and the admin endpoint.

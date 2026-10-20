@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"dbbridge/internal/config"
+	"dbbridge/internal/observability"
 	"dbbridge/internal/protocol"
 	"dbbridge/internal/transport"
 	"github.com/gorilla/websocket"
@@ -117,7 +118,7 @@ func TestFinalAckMustNotDelayFailureClose(t *testing.T) {
 	s.downFINAcked = false
 	s.mu.Unlock()
 	start := time.Now()
-	s.fault(g, context.DeadlineExceeded, false)
+	s.fault(g, observability.FaultLiveness, context.DeadlineExceeded, false)
 	_ = e.conn.SetReadDeadline(start.Add(4 * time.Second))
 	_, err := e.conn.Read(make([]byte, 1))
 	d := time.Since(start)

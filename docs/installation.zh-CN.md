@@ -34,7 +34,7 @@
 
 | 文件 | 内容 |
 |---|---|
-| `dbbridge-<version>-linux-amd64.tar.gz`、`...-linux-arm64.tar.gz` | 目录 `dbbridge-<version>-<os>-<arch>/`，包含 `dbbridge`、`README.md`、`README.zh-CN.md`、`CHANGELOG*`、`docs/`、`configs/`、`deploy/`（如有 `LICENSE`/`NOTICE` 文件也会包含） |
+| `dbbridge-<version>-linux-amd64.tar.gz`、`...-linux-arm64.tar.gz` | 目录 `dbbridge-<version>-<os>-<arch>/`，包含 `dbbridge`、`README.md`、`README.zh-CN.md`、`CHANGELOG*`、`docs/`、`configs/`、`deploy/`、`third_party/`（所链接依赖的模块清单和许可证文件）以及 `LICENSE` |
 | `dbbridge-<version>-windows-amd64.zip` | 内容相同，可执行文件为 `dbbridge.exe` |
 | `dbbridge-linux-amd64`、`dbbridge-linux-arm64`、`dbbridge-windows-amd64.exe` | 单独的二进制文件 |
 | `BUILD-INFO.txt` | 版本、源码标识、源码哈希、构建时间、`SOURCE_DATE_EPOCH`、Go 工具链 |
@@ -172,7 +172,7 @@ Restart-Service dbbridge                 # 应用其他配置修改
 
 - 服务名 `<服务名>`，显示名 `DBBridge (<服务名>)`，自动启动，依赖 `Tcpip`。账户默认为 `LocalSystem`（会给出警告），可通过 `--service-user` 改为 `LocalService`/`NetworkService`。
 - `install` 通过 DACL 检查该账户对每个被引用文件的读权限，对无法确认的文件逐一给出 `icacls` 命令。`gen-config` 写出的文件只有创建者、Administrators 和 SYSTEM 可读，因此需要按上面的方式授权。新建的环境快照会为所选服务账户授予读权限。
-- 日志写入“应用程序”事件日志，事件源为服务名。
+- 日志写入“应用程序”事件日志，事件源为服务名。如果同名事件源已存在且不是 DBBridge 创建的，`install` 会拒绝安装；`uninstall` 只删除 DBBridge 创建的事件源。
 - 停止、系统关机和预关机都会排空节点；预关机超时为 `transport.shutdown_timeout + 30 s`。
 - 配置或凭据错误会以服务特定退出码 78 停止服务（`sc.exe query dbbridge` 显示 `SERVICE_EXIT_CODE : 78`），并写入一条事件日志错误，服务不会被重启。修正配置后再启动服务。其他失败在 5 s 后重启（失败计数一天后清零）。
 - `sc.exe control <name> paramchange` 触发凭据重载，作用相当于 Linux 上的 `SIGHUP`。

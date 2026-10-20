@@ -26,7 +26,13 @@ type RemoteError struct {
 	RetryAfter                        time.Duration
 }
 
-func (e *RemoteError) Error() string { return fmt.Sprintf("peer HTTP %d: %s", e.Status, e.Code) }
+func (e *RemoteError) Error() string {
+	if e.Status == 0 {
+		// A terminal error message received on the carrier.
+		return "peer error: " + e.Code
+	}
+	return fmt.Sprintf("peer HTTP %d: %s", e.Status, e.Code)
+}
 func ReadError(resp *http.Response, inst string) error {
 	var e protocol.ErrorResponse
 	valid := protocol.DecodeJSON(resp.Body, 32<<10, &e) == nil && strings.HasPrefix(e.Code, "DBB_")

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"dbbridge/internal/config"
+	"dbbridge/internal/observability"
 	"dbbridge/internal/protocol"
 	"dbbridge/internal/transport"
 )
@@ -84,14 +85,14 @@ func (s *ingressSession) control(g *generation) {
 		nonce := s.heartbeatNonce
 		s.mu.Unlock()
 		if e := s.ack(g, false, nonce, time.Now().Add(s.m.cfg.Transport.ControlRequestTimeout)); e != nil {
-			s.fault(g, e, false)
+			s.fault(g, observability.FaultControl, e, false)
 			return
 		}
 		s.mu.Lock()
 		normal := s.upEOF && s.upFINApplied && s.downFIN && s.downFINAcked
 		s.mu.Unlock()
 		if normal {
-			s.fault(g, errClosedNormal, true)
+			s.fault(g, observability.FaultControl, errClosedNormal, true)
 			return
 		}
 		// ack_max_delay bounds how long something unacknowledged may wait. With
