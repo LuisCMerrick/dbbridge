@@ -69,7 +69,7 @@ func resettingBackend(t *testing.T, delay time.Duration) string {
 }
 
 func TestSSEStreamEndsWithTerminalErrorWhenBackendIsLost(t *testing.T) {
-	cfg := fixCfg(t, []config.InboundPeerConfig{{ID: "A", Tokens: []string{"tokA"}, AllowedTargets: []string{"db"}, MaxSessions: 5}})
+	cfg := testCfg(t, []config.InboundPeerConfig{{ID: "A", Tokens: []string{"tokA"}, AllowedTargets: []string{"db"}, MaxSessions: 5}})
 	cfg.Targets = map[string]config.TargetConfig{"db": {Network: "tcp", Address: resettingBackend(t, 300*time.Millisecond)}}
 	cfg.Transport.ControlRequestTimeout = 10 * time.Second
 	s, ts := egrServer(t, cfg)
@@ -121,7 +121,7 @@ func TestSSEStreamEndsWithTerminalErrorWhenBackendIsLost(t *testing.T) {
 }
 
 func TestWSCarrierEndsWithTerminalErrorWhenBackendIsLost(t *testing.T) {
-	cfg := fixCfg(t, []config.InboundPeerConfig{{ID: "A", Tokens: []string{"tokA"}, AllowedTargets: []string{"db"}, MaxSessions: 5}})
+	cfg := testCfg(t, []config.InboundPeerConfig{{ID: "A", Tokens: []string{"tokA"}, AllowedTargets: []string{"db"}, MaxSessions: 5}})
 	cfg.Targets = map[string]config.TargetConfig{"db": {Network: "tcp", Address: resettingBackend(t, 300*time.Millisecond)}}
 	_, ts := egrServer(t, cfg)
 	cr := wsCreate(t, ts.URL, "tokA", "w1")

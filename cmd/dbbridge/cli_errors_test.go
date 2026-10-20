@@ -45,7 +45,7 @@ func TestCommandHelpListsOnlyItsOptions(t *testing.T) {
 		t.Fatal(err)
 	}
 	help := diagnostics.String()
-	for _, hidden := range []string{"-dry-run", "-start", "-service-user", "-instal", "-offline", "-exec-path"} {
+	for _, hidden := range []string{"-dry-run", "-start", "-service-user", "-offline", "-exec-path"} {
 		if strings.Contains(help, hidden+"\n") {
 			t.Fatalf("run help lists %s:\n%s", hidden, help)
 		}

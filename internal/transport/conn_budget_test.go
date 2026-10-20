@@ -155,7 +155,7 @@ func TestCancelledRequestIsNotLocalBudgetError(t *testing.T) {
 // Idle peer connections are dropped before the egress server (90s) and
 // common proxies (60-75s) close them.
 func TestPeerPoolsDropIdleConnectionsBeforeServersAndProxies(t *testing.T) {
-	c := NewTripleTransportClientForURL("http://127.0.0.1:1", "token", fixCfg(), "ai", true)
+	c := NewTripleTransportClientForURL("http://127.0.0.1:1", "token", testCfg(), "ai", true)
 	defer c.Close()
 	clients := append([]*http.Client{c.dataClient, c.controlClient}, c.nextSSEShard())
 	for _, cl := range clients {

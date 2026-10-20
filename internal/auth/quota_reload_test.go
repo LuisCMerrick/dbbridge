@@ -9,11 +9,11 @@ import (
 )
 
 func TestQuotaReloadRejectsZeroAndRetainsCounts(t *testing.T) {
-	t.Setenv("PATCH_RELOAD_TOKEN", "reload-test-token")
+	t.Setenv("DBB_TEST_RELOAD_TOKEN", "reload-test-token")
 	p := filepath.Join(t.TempDir(), "auth.yaml")
 	write := func(quota string) {
 		t.Helper()
-		if err := os.WriteFile(p, []byte("version: 1\ninbound_peers:\n- id: A\n  token_envs: [PATCH_RELOAD_TOKEN]\n  allowed_targets: [db]\n  max_sessions: "+quota+"\n"), 0600); err != nil {
+		if err := os.WriteFile(p, []byte("version: 1\ninbound_peers:\n- id: A\n  token_envs: [DBB_TEST_RELOAD_TOKEN]\n  allowed_targets: [db]\n  max_sessions: "+quota+"\n"), 0600); err != nil {
 			t.Fatal(err)
 		}
 	}

@@ -30,9 +30,9 @@ func (b *gatedProbeBody) Read(p []byte) (int, error) {
 func (b *gatedProbeBody) Close() error { return nil }
 
 func TestBoundaryProbeCannotStarveDelete(t *testing.T) {
-	s, c, _, _ := reviewServer(t)
+	s, c, _, _ := boundaryServer(t)
 	c.Transport.UnattachedTimeout = time.Second * 10
-	cr := reviewCreate(t, s, "probe-control", "bi", false)
+	cr := boundaryCreate(t, s, "probe-control", "bi", false)
 	var created protocol.CreateSessionResponse
 	if cr.Code != 201 {
 		t.Fatal(cr.Body.String())
@@ -72,7 +72,7 @@ func TestBoundaryProbeCannotStarveDelete(t *testing.T) {
 }
 
 func TestBoundaryNegotiatedUpWindowReported(t *testing.T) {
-	s, c, reg, _ := reviewServer(t)
+	s, c, reg, _ := boundaryServer(t)
 	c.Transport.UnattachedTimeout = time.Second * 10
 	c.Transport.UpWindowBytes = 1024
 	q := protocol.CreateSessionRequest{ProtocolVersion: "1.4", IngressInstanceID: "ai", CreateRequestID: "negotiated-window", TargetID: "db", Transport: protocol.TransportMode{Mode: "http-sse"}, Limits: protocol.SessionLimits{MaxFrameSize: 8, UpMaxInflightFrames: 2, UpWindowBytes: 16, DownBufferBytes: 32}}
@@ -118,7 +118,7 @@ func TestBoundaryMalformedWSMustTerminateNotSuspend(t *testing.T) {
 }
 
 func testMalformedWSMustTerminate(t *testing.T, scenario string) {
-	s, c, reg, _ := reviewServer(t)
+	s, c, reg, _ := boundaryServer(t)
 	c.Transport.UnattachedTimeout = 3 * time.Second
 	c.Transport.Recovery.Enabled = true
 	c.Transport.Recovery.Grace = time.Second

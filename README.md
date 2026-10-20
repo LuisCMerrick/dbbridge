@@ -47,7 +47,7 @@ Details: [Transport](docs/transport.md).
 | Linux amd64 / arm64 | ✓ | systemd |
 | Windows amd64 | ✓ | Windows service (built in), or WinSW |
 
-Building from source requires Go 1.27.2 or later. Nodes speak protocol 1.4; any two releases with protocol 1.4 interoperate.
+Building from source requires Go 1.27.2 or later. Nodes speak DBBridge protocol 1.4.
 
 ## Quick start
 
@@ -81,7 +81,7 @@ See [Examples](docs/examples.md) for complete deployments and [Installation](doc
 | [Security](docs/security.md) | Hardening, token rotation, emergency revocation, ACLs, admin exposure, service account |
 | [Operations](docs/operations.md) | CLI, exit codes, signals, reload, admin endpoints, metrics, logs, error codes, capacity, troubleshooting |
 | [Examples](docs/examples.md) | MySQL, SQL Server, bidirectional `gen-config` pair, production pair with TLS |
-| [CHANGELOG](CHANGELOG.md) | Changes per release and upgrade notes |
+| [CHANGELOG](CHANGELOG.md) | Release notes |
 
 Sample configurations are in `configs/`, service definitions in `deploy/`.
 

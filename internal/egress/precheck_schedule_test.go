@@ -20,7 +20,7 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-func TestReviewContinuousDownstreamMustYieldToControls(t *testing.T) {
+func TestContinuousDownstreamMustYieldToControls(t *testing.T) {
 	local, remote := net.Pipe()
 	defer remote.Close()
 	go func() { _, _ = io.Copy(io.Discard, remote) }()
@@ -88,9 +88,9 @@ func TestReviewContinuousDownstreamMustYieldToControls(t *testing.T) {
 	}
 }
 
-func TestReviewSinglePeerWSPrechecksMustBeBounded(t *testing.T) {
-	t.Setenv("REVIEW_PRECHECK_TOKEN", "isolated-precheck-token")
-	cfg := &config.Config{Node: config.NodeConfig{ID: "B"}, Auth: config.AuthConfig{InboundPeers: []config.InboundPeerConfig{{ID: "A", TokenEnvs: []string{"REVIEW_PRECHECK_TOKEN"}, AllowedTargets: []string{"db"}}}}, Targets: map[string]config.TargetConfig{"db": {Address: "127.0.0.1:3306"}}}
+func TestSinglePeerWSPrechecksMustBeBounded(t *testing.T) {
+	t.Setenv("DBB_TEST_PRECHECK_TOKEN", "isolated-precheck-token")
+	cfg := &config.Config{Node: config.NodeConfig{ID: "B"}, Auth: config.AuthConfig{InboundPeers: []config.InboundPeerConfig{{ID: "A", TokenEnvs: []string{"DBB_TEST_PRECHECK_TOKEN"}, AllowedTargets: []string{"db"}}}}, Targets: map[string]config.TargetConfig{"db": {Address: "127.0.0.1:3306"}}}
 	if err := cfg.ApplyDefaultsAndValidate(); err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func TestReviewSinglePeerWSPrechecksMustBeBounded(t *testing.T) {
 		}
 	}()
 	for i := 0; i < 3; i++ {
-		h := http.Header{"Authorization": []string{"Bearer isolated-precheck-token"}, protocol.HeaderInstanceID: []string{cfg.Node.InstanceID}, protocol.HeaderWSPurpose: []string{"check"}, protocol.HeaderWSNonce: []string{"nonce-for-isolated-review"}}
+		h := http.Header{"Authorization": []string{"Bearer isolated-precheck-token"}, protocol.HeaderInstanceID: []string{cfg.Node.InstanceID}, protocol.HeaderWSPurpose: []string{"check"}, protocol.HeaderWSNonce: []string{"nonce-for-precheck"}}
 		d := websocket.Dialer{Subprotocols: []string{protocol.SecWebSocketProtocol}, HandshakeTimeout: time.Second}
 		c, response, err := d.Dial("ws"+ts.URL[len("http"):]+"/v1/transport/ws", h)
 		if err != nil {

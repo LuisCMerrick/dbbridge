@@ -135,21 +135,18 @@ type Session struct {
 	graceTimer      *time.Timer
 	activationTimer *time.Timer
 	unattachedTimer *time.Timer
-	attachDeadline  time.Time // absolute initial attach deadline (5.3(6)); zero once activated
+	attachDeadline  time.Time // absolute initial attach deadline; zero once activated
 	attachEpoch     uint64    // epoch the initial attach deadline applies to
 	onTimeout       func(*Session)
 	onFinalize      func(*Session)
 	closed          atomic.Bool
 	finalized       atomic.Bool
 
-	// Suspended accounting (DBB-A15)
-
 	// Back reference to Registry for global resource accounting
 	registry *Registry
 
 	// Negotiated limits
 	negotiatedMaxFrameSize                 int
-	flowHints                              bool // peer negotiated protocol.FeatureFlowLimits
 	done                                   chan struct{}
 	retainedBytes                          atomic.Int64
 	notify                                 chan struct{}

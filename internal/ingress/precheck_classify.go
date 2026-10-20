@@ -14,14 +14,13 @@ type precheckVerdict int
 const (
 	// precheckWSUnavailable: WS does not work on this endpoint right now.
 	// Only the (endpoint, ws) pair cools down; auto may use SSE on the same
-	// endpoint after a fresh probe (3.7.2, 3.8).
+	// endpoint after a fresh probe.
 	precheckWSUnavailable precheckVerdict = iota
 	// precheckUnsafe: TLS, identity, subprotocol, version or illegal hello
-	// data. The endpoint is isolated and SSE is not used to tolerate it
-	// (3.7.3(1,3)).
+	// data. The endpoint is isolated and SSE is not used to tolerate it.
 	precheckUnsafe
 	// precheckAuthRejected: the authenticated Upgrade was refused with 401
-	// (trusted or raw) or a trusted 403. No SSE fallback (3.7.3(2)).
+	// (trusted or raw) or a trusted 403. No SSE fallback.
 	precheckAuthRejected
 	// precheckTemporary: local contention, our own deadline, a retryable
 	// quota answer or a server error of the peer itself. Nothing is cooled;

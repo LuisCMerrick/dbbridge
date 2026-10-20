@@ -93,7 +93,7 @@ func (c *Config) validatePeers(peerMap map[string]bool) error {
 			}
 			epURLs[normURL] = true
 
-			if !c.Transport.AllowInsecureRemoteHTTP && !p.AllowInsecureHTTP && parsedURL.Scheme == "http" {
+			if !p.AllowInsecureHTTP && parsedURL.Scheme == "http" {
 				if !isLoopbackHost(parsedURL.Hostname()) {
 					return fmt.Errorf("peers[%s].endpoints[%s].url %q uses plaintext http to a non-loopback address; use https or set peers[].allow_insecure_http: true for this peer", p.ID, ep.ID, ep.URL)
 				}

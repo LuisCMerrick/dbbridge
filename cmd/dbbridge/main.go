@@ -61,12 +61,6 @@ func execute(args []string, out, errOut io.Writer) error {
 		return errors.New("a command is required")
 	}
 	command, rest := args[0], args[1:]
-	if command == "--instal" || command == "--install" {
-		command = "install"
-	} else if strings.HasPrefix(command, "-") && command != "-v" && command != "--version" && command != "-h" && command != "--help" {
-		command = "run"
-		rest = args
-	}
 	switch command {
 	case "version", "-v", "--version":
 		if len(rest) != 0 {
@@ -107,14 +101,20 @@ func execute(args []string, out, errOut io.Writer) error {
 		level := fs.String("log-level", "info", "debug, info, warn, error")
 		format := fs.String("log-format", "text", "text or json")
 		envFile := fs.String("env-file", "", "Private credential snapshot")
-		name := fs.String("service-name", "dbbridge", "Service identity")
-		account := fs.String("service-user", "", "Linux account; Windows built-in service account")
-		start := fs.Bool("start", false, "Start after installation")
-		dry := fs.Bool("dry-run", false, "Print service installation plan only")
-		install := fs.Bool("install", false, "Install as a service (same as the install command)")
-		fs.BoolVar(install, "instal", false, "Deprecated spelling of --install")
-		offline := fs.Bool("offline", false, "check-config: do not read tokens, environment variables or TLS files")
-		execPath := fs.String("exec-path", "", "Executable path written to the service definition (default: the path dbbridge was invoked with; symlinks are kept)")
+		var name, account, execPath *string
+		var start, dry, offline *bool
+		switch command {
+		case "run":
+			name = fs.String("service-name", "dbbridge", "Service identity")
+		case "check-config":
+			offline = fs.Bool("offline", false, "Do not read tokens, environment variables or TLS files")
+		case "install":
+			name = fs.String("service-name", "dbbridge", "Service identity")
+			account = fs.String("service-user", "", "Linux account; Windows built-in service account")
+			execPath = fs.String("exec-path", "", "Executable path written to the service definition (default: the path dbbridge was invoked with; symlinks are kept)")
+			start = fs.Bool("start", false, "Start after installation")
+			dry = fs.Bool("dry-run", false, "Print service installation plan only")
+		}
 		setCommandUsage(fs, command)
 		if err := parseFlags(fs, rest); err != nil {
 			if errors.Is(err, flag.ErrHelp) {
@@ -131,23 +131,10 @@ func execute(args []string, out, errOut io.Writer) error {
 		if *format != "text" && *format != "json" {
 			return errors.New("invalid --log-format")
 		}
-		if *offline && (command != "check-config" || *install) {
-			return errors.New("--offline is only supported by check-config")
-		}
-		if command != "run" || *install {
+		switch command {
+		case "install":
 			if err := service.LoadEnvironment(*envFile); err != nil {
 				return configError(config.WithCode(config.CodeEnvironment, err))
-			}
-		}
-		if *execPath != "" && command != "install" && !*install {
-			return errors.New("--exec-path requires installation")
-		}
-		if command == "install" || *install {
-			if command == "check-config" {
-				return errors.New("--instal cannot be combined with check-config")
-			}
-			if *install && command != "install" {
-				fmt.Fprintln(errOut, "Note: 'dbbridge install --config ...' is the preferred form")
 			}
 			plan, err := service.Install(context.Background(), service.Options{Name: *name, Config: *path, Executable: *execPath, LogLevel: *level, LogFormat: *format, User: *account, Start: *start, DryRun: *dry})
 			if err != nil {
@@ -174,11 +161,10 @@ func execute(args []string, out, errOut io.Writer) error {
 				fmt.Fprintln(out, "Start with systemctl start <name>.service (Linux) or sc.exe start <name> (Windows).")
 			}
 			return nil
-		}
-		if *dry || *start || *account != "" {
-			return errors.New("--dry-run, --start and --service-user require installation")
-		}
-		if command == "check-config" {
+		case "check-config":
+			if err := service.LoadEnvironment(*envFile); err != nil {
+				return configError(config.WithCode(config.CodeEnvironment, err))
+			}
 			cfg, err := config.LoadConfigWithOptions(*path, config.LoadOptions{Offline: *offline})
 			if err != nil {
 				return configError(fmt.Errorf("config check: %w", err))

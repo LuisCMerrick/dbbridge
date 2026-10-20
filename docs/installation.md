@@ -26,7 +26,7 @@
 - SQL Server named instances are located through the SQL Browser service over UDP 1434, which DBBridge does not forward: give the instance a fixed TCP port and use it as the target address.
 - The database client connects to a local listener (for example `127.0.0.1:13306`). If the client verifies the database's TLS certificate, configure the expected server name in the client (for example the driver's host-name-in-certificate option), because the connection host is the loopback address.
 
-**Protocol.** Nodes speak DBBridge protocol 1.4. Any two releases with protocol 1.4 interoperate; optional features are negotiated per session ([Transport §2](transport.md#2-negotiated-values)).
+**Protocol.** Nodes speak DBBridge protocol 1.4. How the settings of the two nodes meet is described in [Transport §2](transport.md#2-negotiated-values).
 
 ## 2. Release packages and checksums
 
@@ -206,11 +206,11 @@ Recommended Linux layout (Windows: one directory such as `C:\dbbridge`, with rea
 
 ## 8. Upgrade
 
-Sessions are bound to the running process. Restarting a node ends the sessions that pass through it; database clients see their connection closed and reconnect. Nodes of different releases interoperate (protocol 1.4), so the two sides of a pair can be upgraded one at a time, in either order.
+Sessions are bound to the running process. Restarting a node ends the sessions that pass through it; database clients see their connection closed and reconnect. The two sides of a pair are upgraded one at a time.
 
 For each node:
 
-1. Read the upgrade notes in the [CHANGELOG](../CHANGELOG.md).
+1. Read the release notes in the [CHANGELOG](../CHANGELOG.md).
 2. Download the package and verify it against `SHA256SUMS` (§2).
 3. Validate the existing configuration with the **new** binary, as the service account:
    ```bash
@@ -219,7 +219,7 @@ For each node:
 4. Replace the binary at its installed path: `sudo install -m 0755 ./dbbridge-<version>-linux-amd64/dbbridge /usr/local/bin/dbbridge` (Windows: `Stop-Service dbbridge`, copy `dbbridge.exe`). If you keep versioned directories behind a symbolic link, switch the link; the unit starts whatever the link points to.
 5. Apply it:
    - normally `sudo systemctl restart dbbridge` (Windows: `Start-Service dbbridge`). The node drains for up to `transport.shutdown_timeout`, then starts the new binary;
-   - if the upgrade notes mention a change to the generated service definition, or you changed a setting the definition is computed from (§4.3), run `sudo dbbridge uninstall` and `sudo dbbridge install ...` with the same options instead.
+   - if the release notes mention a change to the generated service definition, or you changed a setting the definition is computed from (§4.3), run `sudo dbbridge uninstall` and `sudo dbbridge install ...` with the same options instead.
 6. Verify: `curl -s http://127.0.0.1:<admin port>/readyz` returns `ready`; the log shows `starting dbbridge peer node` without errors; `dbb_endpoint_state` of the peers returns to `HEALTHY`; clients reconnect.
 7. Upgrade the other node the same way.
 

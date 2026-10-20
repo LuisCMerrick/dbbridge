@@ -73,7 +73,7 @@ func NewServer(c *config.Config, a *auth.Authenticator, r *session.Registry) *Se
 	s := &Server{cfg: c, auth: a, registry: r, idem: newIdemTracker()}
 	s.records = c.Resources.EgressMetadataShare(s.createRecordBudget())
 	// Normal close, abnormal close and create failure all keep their create
-	// record and tombstone for idempotency_tombstone_ttl (5.3(7)); they are
+	// record and tombstone for idempotency_tombstone_ttl; they are
 	// charged to the create record share of Metadata.
 	r.SetResources(c.Resources.Payload, s.records, c.Transport.IdempotencyTombstoneTTL)
 	r.SetRetention(c.Resources.Suspended)

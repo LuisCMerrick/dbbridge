@@ -13,13 +13,13 @@ import (
 	"time"
 )
 
-type auditProgressConn struct {
+type testProgressConn struct {
 	net.Conn
 	slow     *atomic.Bool
 	progress *atomic.Int64
 }
 
-func (c *auditProgressConn) Write(p []byte) (int, error) {
+func (c *testProgressConn) Write(p []byte) (int, error) {
 	if !c.slow.Load() {
 		return c.Conn.Write(p)
 	}
@@ -42,7 +42,7 @@ func (c *auditProgressConn) Write(p []byte) (int, error) {
 	}
 	return total, nil
 }
-func TestAudit20261017WSWriteIdleTracksProgress(t *testing.T) {
+func TestWSWriteIdleTracksProgress(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		u := websocket.Upgrader{}
 		c, e := u.Upgrade(w, r, nil)
@@ -60,7 +60,7 @@ func TestAudit20261017WSWriteIdleTracksProgress(t *testing.T) {
 		if e != nil {
 			return nil, e
 		}
-		return NewIdleWriteConn(&auditProgressConn{Conn: c, slow: &slow, progress: &progress}), nil
+		return NewIdleWriteConn(&testProgressConn{Conn: c, slow: &slow, progress: &progress}), nil
 	}}
 	c, _, err := d.Dial("ws"+strings.TrimPrefix(ts.URL, "http"), nil)
 	if err != nil {

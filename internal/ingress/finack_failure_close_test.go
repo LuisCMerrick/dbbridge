@@ -14,7 +14,7 @@ import (
 	"dbbridge/internal/protocol"
 )
 
-// DBB-AUD-05 (FR-11, 5.10.1, 10.1.1): with recovery disabled the client
+// With recovery disabled the client
 // socket closes before the FIN-adjacent final-ACK query, but that query still
 // runs afterwards: when egress confirms down_fin_acked the session is
 // classified as a normal close and no cleanup DELETE is sent.
@@ -23,7 +23,7 @@ func TestFinalAckAfterFailureCloseKeepsNormalClassification(t *testing.T) {
 	var answered atomic.Int64
 	var last atomic.Value
 	const ackDelay = 300 * time.Millisecond
-	e, deletes := fix2Setup(t, "ws", true, func(c *config.Config) { c.Transport.Recovery.EnabledRaw = false }, nil, func(w http.ResponseWriter, r *http.Request, base http.Handler) bool {
+	e, deletes := dataplaneSetup(t, "ws", true, func(c *config.Config) { c.Transport.Recovery.EnabledRaw = false }, nil, func(w http.ResponseWriter, r *http.Request, base http.Handler) bool {
 		if !strings.HasSuffix(r.URL.Path, "/ack") {
 			return false
 		}
@@ -54,10 +54,10 @@ func TestFinalAckAfterFailureCloseKeepsNormalClassification(t *testing.T) {
 		_, _ = w.Write(rec.Body.Bytes())
 		return true
 	})
-	if err := fixEcho2(t, e.conn, "fin-adjacent"); err != nil {
+	if err := testEcho2(t, e.conn, "fin-adjacent"); err != nil {
 		t.Fatal(err)
 	}
-	s := fix2Session(t, e.m)
+	s := testSession(t, e.m)
 	time.Sleep(50 * time.Millisecond)
 	finAck.Store(true)
 	s.mu.Lock()

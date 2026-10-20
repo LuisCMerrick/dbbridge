@@ -24,21 +24,6 @@ func (s *Session) SetNegotiatedLimits(limits protocol.SessionLimits) {
 	}
 }
 
-// SetFlowHints records that the peer negotiated protocol.FeatureFlowLimits,
-// so transports may send it the ack_requested hint.
-func (s *Session) SetFlowHints(on bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.flowHints = on
-}
-
-// FlowHints reports whether SetFlowHints(true) was called.
-func (s *Session) FlowHints() bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.flowHints
-}
-
 func (s *Session) NegotiatedMaxFrameSize() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()

@@ -20,10 +20,10 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-func auditChooser(t *testing.T, urls ...string) (*IngressManager, config.PeerConfig) {
+func testChooser(t *testing.T, urls ...string) (*IngressManager, config.PeerConfig) {
 	t.Helper()
-	t.Setenv("AUDIT_V2_TOKEN", "audit-v2-token")
-	p := config.PeerConfig{ID: "B", ExpectedNodeID: "B", CredentialRef: "B", TokenEnv: "AUDIT_V2_TOKEN"}
+	t.Setenv("DBB_TEST_TOKEN", "test-token")
+	p := config.PeerConfig{ID: "B", ExpectedNodeID: "B", CredentialRef: "B", TokenEnv: "DBB_TEST_TOKEN"}
 	for i, u := range urls {
 		p.Endpoints = append(p.Endpoints, config.EndpointConfig{ID: string(rune('a' + i)), URL: u, Priority: i})
 	}
@@ -41,17 +41,17 @@ func auditChooser(t *testing.T, urls ...string) (*IngressManager, config.PeerCon
 	})
 	return m, c.Peers[0]
 }
-func auditProbeResponse(w http.ResponseWriter, r *http.Request, accept bool) {
+func testProbeResponse(w http.ResponseWriter, r *http.Request, accept bool) {
 	var q protocol.ProbeRequest
 	_ = json.NewDecoder(r.Body).Decode(&q)
 	_ = json.NewEncoder(w).Encode(protocol.ProbeResponse{ProtocolVersion: "1.4", NodeID: "B", InstanceID: "bi", Nonce: q.Nonce, AcceptingNewSessions: accept, RecoveryAvailable: true, Transports: []string{"ws", "http-sse"}})
 }
-func TestAuditV2SafeFallback(t *testing.T) {
+func TestSafeFallback(t *testing.T) {
 	for _, mode := range []string{"reset", "ordinary_200", "trusted_unsupported", "raw_403"} {
 		t.Run(mode, func(t *testing.T) {
 			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.URL.Path == "/v1/peer/probe" {
-					auditProbeResponse(w, r, true)
+					testProbeResponse(w, r, true)
 					return
 				}
 				switch mode {
@@ -69,7 +69,7 @@ func TestAuditV2SafeFallback(t *testing.T) {
 				}
 			}))
 			defer ts.Close()
-			m, p := auditChooser(t, ts.URL)
+			m, p := testChooser(t, ts.URL)
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 			defer cancel()
 			_, _, got, err := m.choose(ctx, p, "", "auto", true)
@@ -79,10 +79,10 @@ func TestAuditV2SafeFallback(t *testing.T) {
 		})
 	}
 }
-func TestAuditV2BadCandidateDoesNotHideBackup(t *testing.T) {
+func TestBadCandidateDoesNotHideBackup(t *testing.T) {
 	primary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/peer/probe" {
-			auditProbeResponse(w, r, true)
+			testProbeResponse(w, r, true)
 			return
 		}
 		up := websocket.Upgrader{Subprotocols: []string{protocol.SecWebSocketProtocol}}
@@ -102,7 +102,7 @@ func TestAuditV2BadCandidateDoesNotHideBackup(t *testing.T) {
 		json.NewEncoder(w).Encode(protocol.ProbeResponse{ProtocolVersion: "1.4", NodeID: "B", InstanceID: "bi", Nonce: q.Nonce, AcceptingNewSessions: true, RecoveryAvailable: true, Transports: []string{"http-sse"}})
 	}))
 	defer backup.Close()
-	control, cp := auditChooser(t, backup.URL)
+	control, cp := testChooser(t, backup.URL)
 	controlCtx, controlCancel := context.WithTimeout(context.Background(), time.Second)
 	_, _, controlMode, controlErr := control.choose(controlCtx, cp, "", "auto", true)
 	controlCancel()
@@ -110,7 +110,7 @@ func TestAuditV2BadCandidateDoesNotHideBackup(t *testing.T) {
 		t.Fatalf("backup control failed: %v mode=%s", controlErr, controlMode)
 	}
 	backupCalls.Store(0)
-	m, p := auditChooser(t, primary.URL, backup.URL)
+	m, p := testChooser(t, primary.URL, backup.URL)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	_, ep, _, err := m.choose(ctx, p, "", "auto", true)
@@ -118,7 +118,7 @@ func TestAuditV2BadCandidateDoesNotHideBackup(t *testing.T) {
 		t.Fatalf("valid backup not considered: calls=%d endpoint=%v err=%v", backupCalls.Load(), ep, err)
 	}
 }
-func TestAuditV2LocalBackpressureNotLinkFailure(t *testing.T) {
+func TestLocalBackpressureNotLinkFailure(t *testing.T) {
 	a, b := net.Pipe()
 	defer a.Close()
 	defer b.Close()
@@ -151,7 +151,7 @@ func TestAuditV2LocalBackpressureNotLinkFailure(t *testing.T) {
 	case <-time.After(180 * time.Millisecond):
 	}
 }
-func TestAuditV2ReleasedFrameStillRetained(t *testing.T) {
+func TestReleasedFrameStillRetained(t *testing.T) {
 	res := resource.NewManager(1<<20, 1<<20, 1<<20, 10)
 	payload := bytes.Repeat([]byte("x"), 256<<10)
 	res.Payload.Try(int64(len(payload)))
@@ -168,10 +168,10 @@ func TestAuditV2ReleasedFrameStillRetained(t *testing.T) {
 		t.Fatalf("payload budget=0 but backing slice retains %d payload bytes", len(full[0].data))
 	}
 }
-func TestAuditV2DrainingCreationRetryCandidate(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { auditProbeResponse(w, r, false) }))
+func TestDrainingCreationRetryCandidate(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { testProbeResponse(w, r, false) }))
 	defer ts.Close()
-	m, p := auditChooser(t, ts.URL)
+	m, p := testChooser(t, ts.URL)
 	// This is the same choose(..., true) call used after a submitted create lost its response.
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
@@ -181,10 +181,10 @@ func TestAuditV2DrainingCreationRetryCandidate(t *testing.T) {
 	}
 }
 
-func TestAuditV2HealthThresholdAffectsActualChoice(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { auditProbeResponse(w, r, true) }))
+func TestHealthThresholdAffectsActualChoice(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { testProbeResponse(w, r, true) }))
 	defer ts.Close()
-	m, p := auditChooser(t, ts.URL)
+	m, p := testChooser(t, ts.URL)
 	mgr := m.linkManagers[p.ID]
 	mgr.RecordFailure("a", false)
 	mgr.RecordFailure("a", false)
@@ -199,11 +199,11 @@ func TestAuditV2HealthThresholdAffectsActualChoice(t *testing.T) {
 	}
 }
 
-func TestAuditV2CreateDeadlineClosesSilentWSReady(t *testing.T) {
+func TestCreateDeadlineClosesSilentWSReady(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/v1/peer/probe":
-			auditProbeResponse(w, r, true)
+			testProbeResponse(w, r, true)
 		case "/v1/sessions":
 			var q protocol.CreateSessionRequest
 			json.NewDecoder(r.Body).Decode(&q)
@@ -223,8 +223,8 @@ func TestAuditV2CreateDeadlineClosesSilentWSReady(t *testing.T) {
 		}
 	}))
 	defer ts.Close()
-	t.Setenv("AUDIT_V2_CREATE", "create-token")
-	cfg := &config.Config{Node: config.NodeConfig{ID: "A"}, Peers: []config.PeerConfig{{ID: "B", ExpectedNodeID: "B", CredentialRef: "B", TokenEnv: "AUDIT_V2_CREATE", Endpoints: []config.EndpointConfig{{ID: "e", URL: ts.URL}}}}, Listeners: []config.ListenerConfig{{ID: "l", Listen: "127.0.0.1:0", Peer: "B", Target: "db"}}, Transport: config.TransportConfig{Protocol: "ws", CreateRetryTimeoutRaw: "150ms", ControlRequestTimeoutRaw: "2s", WS: config.WSConfig{HandshakeTimeoutRaw: "1400ms"}, Recovery: config.RecoveryConfig{EnabledRaw: false}}}
+	t.Setenv("DBB_TEST_CREATE", "create-token")
+	cfg := &config.Config{Node: config.NodeConfig{ID: "A"}, Peers: []config.PeerConfig{{ID: "B", ExpectedNodeID: "B", CredentialRef: "B", TokenEnv: "DBB_TEST_CREATE", Endpoints: []config.EndpointConfig{{ID: "e", URL: ts.URL}}}}, Listeners: []config.ListenerConfig{{ID: "l", Listen: "127.0.0.1:0", Peer: "B", Target: "db"}}, Transport: config.TransportConfig{Protocol: "ws", CreateRetryTimeoutRaw: "150ms", ControlRequestTimeoutRaw: "2s", WS: config.WSConfig{HandshakeTimeoutRaw: "1400ms"}, Recovery: config.RecoveryConfig{EnabledRaw: false}}}
 	if e := cfg.ApplyDefaultsAndValidate(); e != nil {
 		t.Fatal(e)
 	}
@@ -248,20 +248,20 @@ func TestAuditV2CreateDeadlineClosesSilentWSReady(t *testing.T) {
 	}
 }
 
-func TestAuditV2CleanupHonorsDisabledFailover(t *testing.T) {
+func TestCleanupHonorsDisabledFailover(t *testing.T) {
 	primary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(503) }))
 	defer primary.Close()
 	var backups atomic.Int64
 	backup := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		backups.Add(1)
 		if r.URL.Path == "/v1/peer/probe" {
-			auditProbeResponse(w, r, true)
+			testProbeResponse(w, r, true)
 			return
 		}
 		w.WriteHeader(200)
 	}))
 	defer backup.Close()
-	m, p := auditChooser(t, primary.URL, backup.URL)
+	m, p := testChooser(t, primary.URL, backup.URL)
 	p.Failover.Enabled = config.BoolPtr(false)
 	local, remote := net.Pipe()
 	defer remote.Close()

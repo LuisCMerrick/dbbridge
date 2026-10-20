@@ -57,9 +57,9 @@ Egress 按已认证身份限制 WebSocket 预检：最多 2 个并发，每秒 4
 
 两端 `transport` 段保持一致可以让行为更容易预期，但并非必需。
 
-### 流控扩展 flow-limits
+### 流控上限
 
-Ingress 在 `POST /v1/sessions` 上携带请求头 `X-DBB-Features: flow-limits` 来提议 `flow-limits` 扩展。提议后，Egress 在建连应答中增加两个字段：`limits.up_receipt_limit`（即其 `receipt_limit_per_session`）和 `limits.down_max_frames`（512）。通告值超过 1,048,576 时按 1,048,576 处理。在协商成功的会话中，当任一上限用掉一半时，Egress 会在 `ack_up` 控制消息中设置 `ack_requested: true`，Ingress 随即发送确认。此外，当未确认的上行帧达到 `min(up_max_inflight_frames + 4, up_receipt_limit / 2)`，或下行帧达到 `min(32, down_max_frames / 4)` 时，Ingress 也会立即确认；没有该扩展时使用 `up_max_inflight_frames + 4` 和 32。未提议该扩展的节点照常互通。
+每个建连应答都携带 Egress 的流控上限：`limits.up_receipt_limit`（即其 `receipt_limit_per_session`）和 `limits.down_max_frames`（512）。通告值超过 1,048,576 时按 1,048,576 处理；缺少这两个字段的应答视为协议错误。当任一上限用掉一半时，Egress 会在 `ack_up` 控制消息中设置 `ack_requested: true`，Ingress 随即发送确认。此外，当未确认的上行帧达到 `min(up_max_inflight_frames + 4, up_receipt_limit / 2)`，或下行帧达到 `min(32, down_max_frames / 4)` 时，Ingress 也会立即确认。
 
 ## 3. 帧、窗口与确认
 
@@ -73,7 +73,6 @@ Ingress 在 `POST /v1/sessions` 上携带请求头 `X-DBB-Features: flow-limits`
 | `receipt_limit_per_session` | Egress 为去重保留的上行回执数。 | 只在调大 `up_max_inflight_frames` 时一起调大。 |
 | `ack_batch_bytes`、`ack_max_delay` | 下行累计达到该字节数或等待达到该时间（先到者为准）即发送确认。Ingress 实际使用 `min(ack_batch_bytes, 协商后的下行缓冲 / 2)`。 | 很少需要。 |
 | `up_ack_max_delay` | 上行确认的最大延迟。 | 很少需要。 |
-| `max_coalesce_delay` | 为兼容而保留，不起作用。 | — |
 
 缓冲写满时，会话最多等待 `backpressure_timeout` 让出空间，之后以 `timeout` 原因结束。会话因等待恢复而挂起期间，数据库一侧不会因背压被关闭，而是由 `recovery.grace` 和 `suspended_buffer_limit` 约束。
 

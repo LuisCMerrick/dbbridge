@@ -72,7 +72,7 @@ func TestPrepareDoesNotWriteAndHidesCredentials(t *testing.T) {
 	if os.Getenv("SERVICE_TEST_SECRET") != "private-captured-credential" {
 		t.Fatal("snapshot did not restore referenced credential")
 	}
-	// X-SEC-10: a value the service manager already provides wins over the
+	// A value the service manager already provides wins over the
 	// install-time snapshot.
 	t.Setenv("SERVICE_TEST_SECRET", "different-current-value")
 	if err = LoadEnvironment(p.EnvironmentFile); err != nil {

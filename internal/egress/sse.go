@@ -89,7 +89,7 @@ func (s *Server) handleSSEEvents(w http.ResponseWriter, r *http.Request, sess *s
 	})
 	// A session this node terminated ends its event stream with a bound
 	// terminal error event, so the ingress closes the local session instead
-	// of reconnecting (5.6.1).
+	// of reconnecting.
 	if notice, ok := s.terminalNotice(sess, ep, stream); ok {
 		timeout = terminalNoticeTimeout
 		_ = write("error", notice, "")
@@ -111,7 +111,7 @@ func (s *Server) handleUp(w http.ResponseWriter, r *http.Request, sess *session.
 		return
 	}
 	// A frame or body above the negotiated max_frame_size is refused
-	// unread (5.11); the connection is closed instead of drained.
+	// unread; the connection is closed instead of drained.
 	if maxFrame := int64(sess.NegotiatedMaxFrameSize()); int64(length) > maxFrame || r.ContentLength > maxFrame {
 		reject(w, r, 413, protocol.ErrFrameTooLarge, "frame too large", false, false)
 		return

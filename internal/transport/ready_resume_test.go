@@ -36,7 +36,7 @@ func TestInitialReadyProtocolClassification(t *testing.T) {
 				}
 			}))
 			defer ts.Close()
-			c := auditClient(ts.URL)
+			c := testHTTPClient(ts.URL)
 			defer c.Close()
 			_, _, err := c.DialWSSession(context.Background(), "sid", "secret", 1, "bi")
 			if err == nil || errors.Is(err, ErrProtocol) != (kind != "disconnect") {
@@ -57,7 +57,7 @@ func TestResumeRejectsUnrepresentableRemainingBudget(t *testing.T) {
 				})
 			}))
 			defer ts.Close()
-			c := auditClient(ts.URL)
+			c := testHTTPClient(ts.URL)
 			defer c.Close()
 			_, err := c.ResumeSession(context.Background(), "sid", "secret", "bi", protocol.ResumeRequest{
 				ExpectedEpoch: "1", ResumeRequestID: "request", Transport: protocol.TransportMode{Mode: "ws"},

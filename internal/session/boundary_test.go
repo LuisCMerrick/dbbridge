@@ -10,7 +10,7 @@ import (
 )
 
 func TestBoundaryResumeAttachingBypassesSuspendedQuota(t *testing.T) {
-	s, _ := auditSession(t, true)
+	s, _ := testSession(t, true)
 	r := NewRegistry(1, 8192)
 	r.Register(s)
 	s.SetTransportMode("ws")
@@ -21,7 +21,7 @@ func TestBoundaryResumeAttachingBypassesSuspendedQuota(t *testing.T) {
 	if _, err := s.AppendDownBytes([]byte("two bytes")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.Resume(auditReq("active-resume"), 50*time.Millisecond); err != nil && s.GetState() != StateClosed {
+	if _, err := s.Resume(testReq("active-resume"), 50*time.Millisecond); err != nil && s.GetState() != StateClosed {
 		t.Fatal(err)
 	}
 	r.UpdateSuspended()
@@ -32,7 +32,7 @@ func TestBoundaryResumeAttachingBypassesSuspendedQuota(t *testing.T) {
 }
 
 func TestBoundaryInflightResumeConflictIsChecked(t *testing.T) {
-	s, _ := auditSession(t, true)
+	s, _ := testSession(t, true)
 	s.SetTransportMode("ws")
 	id, _ := s.ReserveStream(1, "ws")
 	s.ActivateDataPlane(id)
@@ -53,7 +53,7 @@ func TestBoundaryInflightResumeConflictIsChecked(t *testing.T) {
 		}
 		time.Sleep(time.Millisecond)
 	}
-	req := auditReq("same-id")
+	req := testReq("same-id")
 	req.UpNextOffset = "1"
 	done := make(chan struct{})
 	go func() { defer close(done); s.Resume(req, 500*time.Millisecond) }()
@@ -83,7 +83,7 @@ func TestBoundaryInflightResumeConflictIsChecked(t *testing.T) {
 }
 
 func TestBoundaryTombstoneExpiresWithoutNewCreate(t *testing.T) {
-	s, _ := auditSession(t, false)
+	s, _ := testSession(t, false)
 	r := NewRegistry(1024, 8192)
 	r.ttl = 20 * time.Millisecond
 	r.Register(s)

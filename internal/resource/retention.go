@@ -32,7 +32,7 @@ type Retention struct {
 	mu     sync.Mutex
 	limit  int64
 	leases map[*RetentionLease]struct{}
-	count  atomic.Int64 // len(leases), readable without mu (RES-3 fast path)
+	count  atomic.Int64 // len(leases), readable without mu
 }
 
 func NewRetention(limit int64) *Retention {

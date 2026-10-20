@@ -229,7 +229,6 @@ DNS 解析出错或超时与 TCP 连接被拒一样，以 `502 DBB_DIAL_FAILED` 
 | `ws.write_idle_timeout` | 时长 | `60s` | > 0。 |
 | `frame_size` | 尺寸 | `min(32KiB, max_frame_size)` | > 0，≤ `max_frame_size`。 |
 | `max_frame_size` | 尺寸 | `min(256KiB, up_window_bytes)` | > 0，≤ 1 MiB，≤ `up_window_bytes`。 |
-| `max_coalesce_delay` | 时长 | `1ms` | 0–1 ms。为兼容而保留；数据读到即转发，该值不起作用。 |
 | `up_max_inflight_frames` | int | `8` | 正数；≤ `metadata_limit / 192`。 |
 | `up_window_bytes` | 尺寸 | `min(2MiB, buffer_per_direction)` | ≥ `max_frame_size`，≤ `buffer_per_direction`。 |
 | `receipt_limit_per_session` | int | `max(64, 2 × up_max_inflight_frames + 8)` | ≥ `2 × up_max_inflight_frames + 8`；≤ `metadata_limit / 160`。 |
@@ -259,7 +258,6 @@ DNS 解析出错或超时与 TCP 连接被拒一样，以 `502 DBB_DIAL_FAILED` 
 | `sse_write_idle_timeout` | 时长 | `60s` | > 0。 |
 | `backpressure_timeout` | 时长 | `120s` | > 0。 |
 | `shutdown_timeout` | 时长 | `30s` | > 0。 |
-| `allow_insecure_remote_http` | bool | `false` | 已弃用。等同于同时设置 `http.allow_insecure_listen` 和所有 peer 的 `allow_insecure_http`。请改用这两个专门的配置项。 |
 | `use_environment_proxy` | bool | `false` | 对端连接使用 `HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY`（含小写形式）。每个进程只读取一次。 |
 | `sql_replay` | bool | `false` | 必须为 `false`。 |
 

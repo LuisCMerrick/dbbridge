@@ -20,7 +20,7 @@ import (
 // version, bad key) is refused before the attach slot is reserved, so the
 // session stays usable.
 func TestMalformedWSHandshakeLeavesSessionAttachable(t *testing.T) {
-	cfg := fixCfg(t, []config.InboundPeerConfig{{ID: "A", Tokens: []string{"tokA"}, AllowedTargets: []string{"db"}, MaxSessions: 5}})
+	cfg := testCfg(t, []config.InboundPeerConfig{{ID: "A", Tokens: []string{"tokA"}, AllowedTargets: []string{"db"}, MaxSessions: 5}})
 	s, ts := egrServer(t, cfg)
 	cr := wsCreate(t, ts.URL, "tokA", "w1")
 	for name, h := range map[string][2]string{
@@ -62,7 +62,7 @@ func TestMalformedWSHandshakeLeavesSessionAttachable(t *testing.T) {
 // A WS frame body must arrive within a deadline from its first byte; a peer
 // that trickles it loses the carrier instead of holding codec indefinitely.
 func TestTrickledWSFrameBodyDropsCarrier(t *testing.T) {
-	cfg := fixCfg(t, []config.InboundPeerConfig{{ID: "A", Tokens: []string{"tokA"}, AllowedTargets: []string{"db"}, MaxSessions: 5}})
+	cfg := testCfg(t, []config.InboundPeerConfig{{ID: "A", Tokens: []string{"tokA"}, AllowedTargets: []string{"db"}, MaxSessions: 5}})
 	cfg.Transport.UpRequestTimeout = 500 * time.Millisecond
 	s, ts := egrServer(t, cfg)
 	cr := wsCreate(t, ts.URL, "tokA", "w1")
@@ -132,7 +132,7 @@ func activeSSESession(t *testing.T, s *Server, url, id string) (protocol.CreateS
 // A FIN conflicting with a pending frame terminates the session with
 // DBB_FRAME_CONFLICT, as its session_closed:true answer says.
 func TestFinConflictClosesSessionWithFrameConflict(t *testing.T) {
-	cfg := fixCfg(t, []config.InboundPeerConfig{{ID: "A", Tokens: []string{"tokA"}, AllowedTargets: []string{"db"}, MaxSessions: 5}})
+	cfg := testCfg(t, []config.InboundPeerConfig{{ID: "A", Tokens: []string{"tokA"}, AllowedTargets: []string{"db"}, MaxSessions: 5}})
 	cfg.Transport.ControlRequestTimeout = 10 * time.Second
 	s, ts := egrServer(t, cfg)
 	cr, stream, sess := activeSSESession(t, s, ts.URL, "f1")
@@ -151,7 +151,7 @@ func TestFinConflictClosesSessionWithFrameConflict(t *testing.T) {
 // A conflicting /up frame records DBB_FRAME_CONFLICT as the terminal code,
 // as the WS transport does.
 func TestUpConflictClosesSessionWithFrameConflict(t *testing.T) {
-	cfg := fixCfg(t, []config.InboundPeerConfig{{ID: "A", Tokens: []string{"tokA"}, AllowedTargets: []string{"db"}, MaxSessions: 5}})
+	cfg := testCfg(t, []config.InboundPeerConfig{{ID: "A", Tokens: []string{"tokA"}, AllowedTargets: []string{"db"}, MaxSessions: 5}})
 	cfg.Transport.ControlRequestTimeout = 10 * time.Second
 	s, ts := egrServer(t, cfg)
 	cr, stream, sess := activeSSESession(t, s, ts.URL, "f2")
@@ -172,7 +172,7 @@ func TestUpConflictClosesSessionWithFrameConflict(t *testing.T) {
 // A request that finds its session's target ACL revoked before the reload
 // sweep closes it records DBB_TARGET_FORBIDDEN as the terminal code.
 func TestRevokedTargetOnRequestClosesWithTargetForbidden(t *testing.T) {
-	cfg := fixCfg(t, []config.InboundPeerConfig{{ID: "A", Tokens: []string{"tokA"}, AllowedTargets: []string{"db"}, MaxSessions: 5}})
+	cfg := testCfg(t, []config.InboundPeerConfig{{ID: "A", Tokens: []string{"tokA"}, AllowedTargets: []string{"db"}, MaxSessions: 5}})
 	s, ts := egrServer(t, cfg)
 	st, _, cr := egrCreate(t, ts.URL, "tokA", "r1", "db")
 	if st != 201 {

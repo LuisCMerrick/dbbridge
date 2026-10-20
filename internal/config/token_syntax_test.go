@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestReviewYAMLAliasCannotBypassProtocolType(t *testing.T) {
+func TestYAMLAliasCannotBypassProtocolType(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "peer.yaml")
 	data := "node:\n  id: &numeric 1.4\ntransport:\n  protocol_version: *numeric\n"
 	if err := os.WriteFile(p, []byte(data), 0600); err != nil {
@@ -19,7 +19,7 @@ func TestReviewYAMLAliasCannotBypassProtocolType(t *testing.T) {
 	}
 }
 
-func TestReviewTokenValidationAcrossCredentialSources(t *testing.T) {
+func TestTokenValidationAcrossCredentialSources(t *testing.T) {
 	for _, tc := range []struct {
 		name, token string
 		valid       bool
@@ -34,7 +34,7 @@ func TestReviewTokenValidationAcrossCredentialSources(t *testing.T) {
 		{"maximum", strings.Repeat("x", maxTokenBytes), true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv("REVIEW_SOURCE_TOKEN", tc.token)
+			t.Setenv("DBB_TEST_SOURCE_TOKEN", tc.token)
 			dir := t.TempDir()
 			if err := os.WriteFile(filepath.Join(dir, "token"), []byte(tc.token+"\r\n"), 0600); err != nil {
 				t.Fatal(err)
@@ -44,8 +44,8 @@ func TestReviewTokenValidationAcrossCredentialSources(t *testing.T) {
 				in := InboundPeerConfig{ID: "A", AllowedTargets: []string{"db"}}
 				out := OutboundPeerCredential{ID: "B"}
 				if source == "env" {
-					p.TokenEnv, out.TokenEnv = "REVIEW_SOURCE_TOKEN", "REVIEW_SOURCE_TOKEN"
-					in.TokenEnvs = []string{"REVIEW_SOURCE_TOKEN"}
+					p.TokenEnv, out.TokenEnv = "DBB_TEST_SOURCE_TOKEN", "DBB_TEST_SOURCE_TOKEN"
+					in.TokenEnvs = []string{"DBB_TEST_SOURCE_TOKEN"}
 				} else {
 					p.TokenFile, out.TokenFile = "token", "token"
 					in.TokenFiles = []string{"token"}
@@ -68,7 +68,7 @@ func TestReviewTokenValidationAcrossCredentialSources(t *testing.T) {
 	}
 }
 
-func TestReviewTokenFilesRejectExtraLines(t *testing.T) {
+func TestTokenFilesRejectExtraLines(t *testing.T) {
 	dir := t.TempDir()
 	for _, body := range []string{"token\n\n", "token\r\n\r\n", "token\nother"} {
 		if err := os.WriteFile(filepath.Join(dir, "token"), []byte(body), 0600); err != nil {
@@ -80,7 +80,7 @@ func TestReviewTokenFilesRejectExtraLines(t *testing.T) {
 	}
 }
 
-func TestReviewREADMEStandalonePairLoads(t *testing.T) {
+func TestREADMEStandalonePairLoads(t *testing.T) {
 	t.Setenv("DBB_TOKEN_SECRET", "readme-validation-token")
 	b, err := os.ReadFile(filepath.Join("..", "..", "docs", "examples.md"))
 	if err != nil {
@@ -117,9 +117,9 @@ func TestReviewREADMEStandalonePairLoads(t *testing.T) {
 	}
 }
 
-func TestReviewOutboundWhitespaceTokenRejectedDuringCheck(t *testing.T) {
-	t.Setenv("REVIEW_BAD_TOKEN", "contains a space")
-	c := &Config{Node: NodeConfig{ID: "A"}, Peers: []PeerConfig{{ID: "B", ExpectedNodeID: "B", CredentialRef: "B", TokenEnv: "REVIEW_BAD_TOKEN", Endpoints: []EndpointConfig{{ID: "one", URL: "http://127.0.0.1:18080"}}}}}
+func TestOutboundWhitespaceTokenRejectedDuringCheck(t *testing.T) {
+	t.Setenv("DBB_TEST_BAD_TOKEN", "contains a space")
+	c := &Config{Node: NodeConfig{ID: "A"}, Peers: []PeerConfig{{ID: "B", ExpectedNodeID: "B", CredentialRef: "B", TokenEnv: "DBB_TEST_BAD_TOKEN", Endpoints: []EndpointConfig{{ID: "one", URL: "http://127.0.0.1:18080"}}}}}
 	if err := c.ApplyDefaultsAndValidate(); err == nil {
 		t.Fatal("check-config accepted an outbound Bearer token that inbound credential validation rejects")
 	}

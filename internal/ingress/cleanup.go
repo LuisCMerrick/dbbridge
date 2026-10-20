@@ -182,7 +182,7 @@ func (m *IngressManager) probeDirect(ctx context.Context, peer string, c *transp
 }
 
 // deleteVia sends one DELETE with a share of the remaining time, using only
-// the last fully verified epoch (10.3.3). A trusted STALE_EPOCH means egress
+// the last fully verified epoch. A trusted STALE_EPOCH means egress
 // may have advanced while the last resume's outcome was lost: the result is
 // cleanupUnknown and the task ends there. No newer epoch is guessed, at most
 // one DELETE is sent per candidate, and egress's original recovery deadline

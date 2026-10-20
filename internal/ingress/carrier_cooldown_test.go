@@ -28,7 +28,7 @@ func brokenWSAttach(t *testing.T, recovery bool) (sessionDials int64, served int
 		}
 		return false
 	}
-	e, _ := fix2Setup(t, "auto", false, func(c *config.Config) { c.Transport.Recovery.EnabledRaw = recovery }, nil, hook)
+	e, _ := dataplaneSetup(t, "auto", false, func(c *config.Config) { c.Transport.Recovery.EnabledRaw = recovery }, nil, hook)
 	if err := e.m.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +38,7 @@ func brokenWSAttach(t *testing.T, recovery bool) (sessionDials int64, served int
 			t.Fatal(err)
 		}
 		c.SetDeadline(time.Now().Add(8 * time.Second))
-		if fixEcho2(t, c, "q") == nil {
+		if testEcho2(t, c, "q") == nil {
 			served++
 		}
 		c.Close()
@@ -74,7 +74,7 @@ func TestLocalCreateDeadlineDoesNotCoolCarrier(t *testing.T) {
 		}
 		return false
 	}
-	e, _ := fix2Setup(t, "ws", false, func(c *config.Config) {
+	e, _ := dataplaneSetup(t, "ws", false, func(c *config.Config) {
 		c.Transport.CreateRetryTimeoutRaw = "1500ms"
 		c.Transport.Recovery.EnabledRaw = true
 	}, nil, hook)
@@ -111,13 +111,13 @@ func TestCarrierFailureExcludesLocalCauses(t *testing.T) {
 		err    error
 		want   bool
 	}{
-		{"carrier reset", nil, errors.New("read: connection reset by peer"), true},
-		{"detection timeout", nil, context.DeadlineExceeded, true},
+		{"carrier reset", context.Background(), errors.New("read: connection reset by peer"), true},
+		{"detection timeout", context.Background(), context.DeadlineExceeded, true},
 		{"local deadline", expired, errors.New("use of closed network connection"), false},
-		{"local probe slot", nil, fmt.Errorf("%w: busy", errLocalBusy), false},
-		{"local budget", nil, fmt.Errorf("dial: %w", resource.ErrLimit), false},
-		{"local budget hook", nil, fmt.Errorf("post: %w", localBudgetError{}), false},
-		{"client socket", nil, localSocketError(errors.New("broken pipe")), false},
+		{"local probe slot", context.Background(), fmt.Errorf("%w: busy", errLocalBusy), false},
+		{"local budget", context.Background(), fmt.Errorf("dial: %w", resource.ErrLimit), false},
+		{"local budget hook", context.Background(), fmt.Errorf("post: %w", localBudgetError{}), false},
+		{"client socket", context.Background(), localSocketError(errors.New("broken pipe")), false},
 	}
 	for _, c := range cases {
 		if got := s.carrierFailure(c.parent, c.err); got != c.want {
@@ -125,7 +125,7 @@ func TestCarrierFailureExcludesLocalCauses(t *testing.T) {
 		}
 	}
 	s.closed.Store(true)
-	if s.carrierFailure(nil, errors.New("reset")) {
+	if s.carrierFailure(context.Background(), errors.New("reset")) {
 		t.Error("a stopped session must not cool its carrier")
 	}
 }
@@ -144,7 +144,7 @@ func TestFirstAttachBoundedByUnattachedTimeout(t *testing.T) {
 		}
 		return false
 	}
-	e, _ := fix2Setup(t, "ws", false, func(c *config.Config) {
+	e, _ := dataplaneSetup(t, "ws", false, func(c *config.Config) {
 		c.Transport.Recovery.EnabledRaw = true
 	}, func(b *config.Config) { b.Transport.UnattachedTimeoutRaw = "400ms" }, hook)
 	if err := e.m.Start(); err != nil {

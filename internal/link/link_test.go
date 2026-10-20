@@ -12,7 +12,7 @@ func newTestManager(f config.FailoverConfig) *PeerLinkManager {
 	return NewPeerLinkManager(config.PeerConfig{ID: "B", Failover: f, Endpoints: []config.EndpointConfig{{ID: "e1", URL: "http://127.0.0.1:1"}}})
 }
 
-// ING-14: unhealthy_threshold<=0 uses the same effective threshold for the
+// unhealthy_threshold<=0 uses the same effective threshold for the
 // cooldown and for the UNHEALTHY state.
 func TestThresholdConsistentWhenUnset(t *testing.T) {
 	m := newTestManager(config.FailoverConfig{UnhealthyThreshold: 0, Cooldown: time.Minute})
@@ -26,9 +26,8 @@ func TestThresholdConsistentWhenUnset(t *testing.T) {
 	}
 }
 
-// ING-14 / DBB-AUD-06: healthy_threshold consecutive successes end the
-// UNHEALTHY state but never cut a running failure cooldown short
-// (requirements 3.2(4): 成功计数不能绕过冷却).
+// healthy_threshold consecutive successes end the
+// UNHEALTHY state but never cut a running failure cooldown short.
 func TestSuccessDoesNotClearCooldown(t *testing.T) {
 	m := newTestManager(config.FailoverConfig{UnhealthyThreshold: 1, HealthyThreshold: 2, Cooldown: time.Hour})
 	ep := m.GetEndpoints()[0]
@@ -62,9 +61,9 @@ func TestSuccessDoesNotClearCooldown(t *testing.T) {
 	}
 }
 
-// DBB-AUD-06: the first carrier drop cools that (Endpoint, transport) pair
-// down for the fault cycle; other carriers and the address stay eligible
-// (requirements 3.2(4), 3.8). Attach failures cool down at once as well.
+// The first carrier drop cools that (Endpoint, transport) pair
+// down for the fault cycle; other carriers and the address stay eligible.
+// Attach failures cool down at once as well.
 func TestTransportDropCooldown(t *testing.T) {
 	m := newTestManager(config.FailoverConfig{Cooldown: time.Minute})
 	ep := m.GetEndpoints()[0]
@@ -91,7 +90,7 @@ func TestTransportDropCooldown(t *testing.T) {
 	}
 }
 
-// DBB-AUD-06: a whole-path failure of a real request cools the address at
+// A whole-path failure of a real request cools the address at
 // once, regardless of unhealthy_threshold, and successes cannot shorten it.
 func TestPathFailureCoolsAddress(t *testing.T) {
 	m := newTestManager(config.FailoverConfig{UnhealthyThreshold: 2, HealthyThreshold: 1, Cooldown: 5 * time.Second})

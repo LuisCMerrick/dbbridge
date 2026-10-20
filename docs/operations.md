@@ -32,7 +32,7 @@ dbbridge <command> [options]
 | `version` (`-v`, `--version`) | Print version information. |
 | `help` (`-h`, `--help`) | Print the help text. |
 
-Options use Go flag syntax: one or two dashes, `--flag=value` or `--flag value`. Positional arguments are rejected. A first argument that is an option runs `run` with all arguments (`dbbridge -c peer.yaml`), and `dbbridge --install -c peer.yaml` is the same as `dbbridge install -c peer.yaml`. Without arguments the help text is printed and the exit status is 1. `<command> --help` prints that command's options to stderr and exits 0.
+Options use Go flag syntax: one or two dashes, `--flag=value` or `--flag value`. Positional arguments are rejected. Each command accepts only its own options. Without arguments the help text is printed and the exit status is 1. `<command> --help` prints that command's options to stderr and exits 0.
 
 ### `run`, `check-config`, `install`
 
@@ -206,8 +206,6 @@ Normal closes and closes during node shutdown are not counted as failures.
 | `dbb_auth_credentials_stale` | gauge | both | 1 while the last reload was rejected and the previous credentials are in effect. |
 | `dbb_auth_reload_last_success_timestamp_seconds` | gauge | both | Unix time of the last accepted credential load. |
 | `dbb_unbalanced_release_total` | counter | both | Accounting self-check; stays 0. A non-zero value indicates a defect worth reporting. |
-
-**Deprecated names.** `dbb_resume_success`, `dbb_resume_failed` and `dbb_client_close_count` are emitted alongside their `_total` replacements for existing dashboards. Use the `_total` names; the old names will be removed in a future release.
 
 **Suggested alerts.** `dbb_auth_credentials_stale == 1`; `/readyz` not 200; `rate(dbb_dial_failed_total[5m]) > 0`; `dbb_endpoint_state{state="MISMATCHED"} == 1`; `dbb_resource_in_use / dbb_resource_limit > 0.9` for `sessions`, `metadata`, `payload`; rising `dbb_terminated_*` or `dbb_resume_failed_total`.
 

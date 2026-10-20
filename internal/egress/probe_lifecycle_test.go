@@ -10,8 +10,8 @@ import (
 	"time"
 )
 
-func TestAuditV2InvalidNegotiationRejectedBeforeDial(t *testing.T) {
-	s, _, _, count := reviewServer(t)
+func TestInvalidNegotiationRejectedBeforeDial(t *testing.T) {
+	s, _, _, count := boundaryServer(t)
 	q := protocol.CreateSessionRequest{ProtocolVersion: "1.4", IngressInstanceID: "ai", CreateRequestID: "invalid-limits", TargetID: "db", Transport: protocol.TransportMode{Mode: "ws"}, Recovery: protocol.RecoveryNegotiation{}, Limits: protocol.SessionLimits{MaxFrameSize: 1024, UpMaxInflightFrames: 8, UpWindowBytes: 1, DownBufferBytes: 1024}}
 	b, _ := json.Marshal(q)
 	r := httptest.NewRequest("POST", "/v1/sessions", bytes.NewReader(b))
@@ -25,8 +25,8 @@ func TestAuditV2InvalidNegotiationRejectedBeforeDial(t *testing.T) {
 	}
 }
 
-func TestV2ProbeKeepsReservedControlAdmission(t *testing.T) {
-	s, c, _, _ := reviewServer(t)
+func TestProbeKeepsReservedControlAdmission(t *testing.T) {
+	s, c, _, _ := boundaryServer(t)
 	c.Resources.DataRequests = resource.New(1)
 	if !c.Resources.DataRequests.Try(1) {
 		t.Fatal("fixture admission")
@@ -45,8 +45,8 @@ func TestV2ProbeKeepsReservedControlAdmission(t *testing.T) {
 		t.Fatalf("data saturation starved reserved control: %d %s", w.Code, w.Body.String())
 	}
 }
-func TestAuditV2GraceMillisecondsOverflow(t *testing.T) {
-	s, c, reg, _ := reviewServer(t)
+func TestGraceMillisecondsOverflow(t *testing.T) {
+	s, c, reg, _ := boundaryServer(t)
 	c.Transport.Recovery.Enabled = true
 	c.Transport.Recovery.Grace = time.Second
 	q := protocol.CreateSessionRequest{ProtocolVersion: "1.4", IngressInstanceID: "ai", CreateRequestID: "overflow-grace", TargetID: "db", Transport: protocol.TransportMode{Mode: "ws"}, Recovery: protocol.RecoveryNegotiation{Enabled: true, GraceMs: 9223372036854775807}, Limits: protocol.SessionLimits{MaxFrameSize: 1024, UpMaxInflightFrames: 8, UpWindowBytes: 1024, DownBufferBytes: 1024}}

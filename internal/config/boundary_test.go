@@ -35,7 +35,7 @@ func TestBoundaryConfigStrictScalarTypes(t *testing.T) {
 	}
 }
 
-func TestBoundaryRemovedConfigFieldsAreRejected(t *testing.T) {
+func TestBoundaryUnknownConfigFieldsAreRejected(t *testing.T) {
 	for _, fields := range []string{
 		"transport:\n  resume_enabled: true\n",
 		"transport:\n  resume_grace: 30s\n",
@@ -50,7 +50,7 @@ func TestBoundaryRemovedConfigFieldsAreRejected(t *testing.T) {
 			t.Fatal(err)
 		}
 		if _, err := LoadConfig(p); err == nil || !strings.Contains(err.Error(), "not found") {
-			t.Fatalf("removed field must fail schema validation: %s error=%v", fields, err)
+			t.Fatalf("unknown field must fail schema validation: %s error=%v", fields, err)
 		}
 	}
 }

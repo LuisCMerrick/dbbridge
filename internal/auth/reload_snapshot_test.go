@@ -8,11 +8,11 @@ import (
 	"time"
 )
 
-func TestAuditV2ReloadMissingRequiredOutboundRetainsSnapshot(t *testing.T) {
+func TestReloadMissingRequiredOutboundRetainsSnapshot(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "auth.yaml")
-	t.Setenv("AUDIT_V2_OUTBOUND", "valid-outbound-token")
-	os.WriteFile(p, []byte("version: 1\noutbound_peers:\n- id: cred-b\n  token_env: AUDIT_V2_OUTBOUND\n"), 0600)
+	t.Setenv("DBB_TEST_OUTBOUND", "valid-outbound-token")
+	os.WriteFile(p, []byte("version: 1\noutbound_peers:\n- id: cred-b\n  token_env: DBB_TEST_OUTBOUND\n"), 0600)
 	cfg := &config.Config{Auth: config.AuthConfig{CredentialsFile: p, ReloadInterval: time.Hour}, Peers: []config.PeerConfig{{ID: "B", CredentialRef: "cred-b"}}}
 	a := NewAuthenticator(cfg)
 	defer a.Close()
@@ -26,7 +26,7 @@ func TestAuditV2ReloadMissingRequiredOutboundRetainsSnapshot(t *testing.T) {
 	}
 }
 
-func TestV2ReloadUnknownACLRetainsSnapshot(t *testing.T) {
+func TestReloadUnknownACLRetainsSnapshot(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "auth.yaml")
 	t.Setenv("DBB_V2_ACL_TOKEN", "acl-test-secret")
 	write := func(target string) {

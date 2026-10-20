@@ -99,7 +99,7 @@ func (c *Config) validateListenAddresses() error {
 		}
 		h, _, _ := net.SplitHostPort(c.HTTP.Listen)
 		if !c.HTTP.TLS.Enabled && !isLoopbackHost(h) {
-			if !c.HTTP.AllowInsecureListen && !c.Transport.AllowInsecureRemoteHTTP {
+			if !c.HTTP.AllowInsecureListen {
 				return errors.New("non-loopback HTTP needs TLS or explicit insecure opt-in (http.allow_insecure_listen: true)")
 			}
 			c.Warnings = append(c.Warnings, fmt.Sprintf("http.listen %s accepts plaintext HTTP on a non-loopback address; bearer tokens and database traffic are not encrypted", c.HTTP.Listen))
@@ -134,7 +134,7 @@ func (c *Config) validateListenAddresses() error {
 var idPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$`)
 
 // warnID flags identifiers that will be awkward in logs, metric labels and the
-// peer's configuration. They are accepted for compatibility.
+// peer's configuration.
 func (c *Config) warnID(kind, id string) {
 	if id != "" && !idPattern.MatchString(id) {
 		c.Warnings = append(c.Warnings, fmt.Sprintf("%s id %q should match %s (letters, digits, '.', '_', '-', at most 64 characters)", kind, id, idPattern.String()))

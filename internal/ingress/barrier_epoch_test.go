@@ -51,8 +51,8 @@ func newFixedFixture(t *testing.T, mode string, tls, dropCreate, ackThreshold bo
 			go func() { defer sockets.Delete(c); defer c.Close(); _, _ = io.Copy(c, c) }()
 		}
 	}()
-	t.Setenv("DBB_FIX_V2_TOKEN", "independent-regression-credential")
-	b := &config.Config{Node: config.NodeConfig{ID: "B"}, HTTP: config.HTTPConfig{Enabled: true}, Auth: config.AuthConfig{InboundPeers: []config.InboundPeerConfig{{ID: "A", TokenEnvs: []string{"DBB_FIX_V2_TOKEN"}, AllowedTargets: []string{"db"}, MaxSessions: 10}}}, Targets: map[string]config.TargetConfig{"db": {Network: "tcp", Address: backend.Addr().String()}}, Transport: config.TransportConfig{HeartbeatRaw: "100ms", FailureDetectTimeoutRaw: "1s", Recovery: config.RecoveryConfig{EnabledRaw: false}}}
+	t.Setenv("DBB_TEST_TOKEN", "test-credential")
+	b := &config.Config{Node: config.NodeConfig{ID: "B"}, HTTP: config.HTTPConfig{Enabled: true}, Auth: config.AuthConfig{InboundPeers: []config.InboundPeerConfig{{ID: "A", TokenEnvs: []string{"DBB_TEST_TOKEN"}, AllowedTargets: []string{"db"}, MaxSessions: 10}}}, Targets: map[string]config.TargetConfig{"db": {Network: "tcp", Address: backend.Addr().String()}}, Transport: config.TransportConfig{HeartbeatRaw: "100ms", FailureDetectTimeoutRaw: "1s", Recovery: config.RecoveryConfig{EnabledRaw: false}}}
 	b.Transport.ChunkSizeRaw = "7KiB"
 	if err = b.ApplyDefaultsAndValidate(); err != nil {
 		t.Fatal(err)
@@ -114,8 +114,8 @@ func newFixedFixture(t *testing.T, mode string, tls, dropCreate, ackThreshold bo
 		ts.Start()
 	}
 	// The self-signed certificate bypass is explicit and confined to this fixture;
-	// TestAuditV2WSSAfterHTTP2Probe separately verifies a trusted certificate path.
-	a := &config.Config{Node: config.NodeConfig{ID: "A"}, Peers: []config.PeerConfig{{ID: "B", ExpectedNodeID: "B", CredentialRef: "B", TokenEnv: "DBB_FIX_V2_TOKEN", TLS: config.TLSClientConfig{Verify: config.BoolPtr(!tls)}, Endpoints: []config.EndpointConfig{{ID: "primary", URL: ts.URL}}}}, Listeners: []config.ListenerConfig{{ID: "local", Listen: "127.0.0.1:0", Peer: "B", Target: "db"}}, Transport: config.TransportConfig{Protocol: mode, HeartbeatRaw: "100ms", FailureDetectTimeoutRaw: "1s", ControlRequestTimeoutRaw: "500ms", CreateRetryTimeoutRaw: "2s", Recovery: config.RecoveryConfig{EnabledRaw: false}}}
+	// TestWSSAfterHTTP2Probe separately verifies a trusted certificate path.
+	a := &config.Config{Node: config.NodeConfig{ID: "A"}, Peers: []config.PeerConfig{{ID: "B", ExpectedNodeID: "B", CredentialRef: "B", TokenEnv: "DBB_TEST_TOKEN", TLS: config.TLSClientConfig{Verify: config.BoolPtr(!tls)}, Endpoints: []config.EndpointConfig{{ID: "primary", URL: ts.URL}}}}, Listeners: []config.ListenerConfig{{ID: "local", Listen: "127.0.0.1:0", Peer: "B", Target: "db"}}, Transport: config.TransportConfig{Protocol: mode, HeartbeatRaw: "100ms", FailureDetectTimeoutRaw: "1s", ControlRequestTimeoutRaw: "500ms", CreateRetryTimeoutRaw: "2s", Recovery: config.RecoveryConfig{EnabledRaw: false}}}
 	if ackThreshold {
 		a.Transport.AckBatchBytesRaw = "4B"
 		a.Transport.AckMaxDelayRaw = "500ms"
@@ -145,7 +145,7 @@ func newFixedFixture(t *testing.T, mode string, tls, dropCreate, ackThreshold bo
 	return f
 }
 
-func TestV2TLSDataAndControlProtocols(t *testing.T) {
+func TestTLSDataAndControlProtocols(t *testing.T) {
 	for _, mode := range []string{"ws", "http-sse"} {
 		t.Run(mode, func(t *testing.T) {
 			beforeACK, beforePOST := atomic.LoadInt64(&observability.DefaultMetrics.ExplicitAckTotal), atomic.LoadInt64(&observability.DefaultMetrics.PostCountTotal)
@@ -184,7 +184,7 @@ func TestV2TLSDataAndControlProtocols(t *testing.T) {
 			}
 			var metrics bytes.Buffer
 			f.manager.WriteMetrics(&metrics)
-			if !strings.Contains(metrics.String(), `phase="attach",success="true"`) || !strings.Contains(metrics.String(), `endpoint="primary"`) || strings.Contains(metrics.String(), "independent-regression-credential") {
+			if !strings.Contains(metrics.String(), `phase="attach",success="true"`) || !strings.Contains(metrics.String(), `endpoint="primary"`) || strings.Contains(metrics.String(), "test-credential") {
 				t.Fatalf("missing bounded phase/binding metrics or leaked credential: %s", metrics.String())
 			}
 			t.Logf("actual HTTP versions: %v; verified %d bytes each direction", observed, len(payload))
@@ -192,7 +192,7 @@ func TestV2TLSDataAndControlProtocols(t *testing.T) {
 	}
 }
 
-func TestV2LostCreateResponseCanBeRetrievedDuringDrain(t *testing.T) {
+func TestLostCreateResponseCanBeRetrievedDuringDrain(t *testing.T) {
 	f := newFixedFixture(t, "auto", false, true, false)
 	f.conn.SetDeadline(time.Now().Add(3 * time.Second))
 	if _, err := f.conn.Write([]byte("same session")); err != nil {
@@ -207,7 +207,7 @@ func TestV2LostCreateResponseCanBeRetrievedDuringDrain(t *testing.T) {
 	}
 }
 
-func TestV2ByteThresholdSchedulesAckBeforeTimer(t *testing.T) {
+func TestByteThresholdSchedulesAckBeforeTimer(t *testing.T) {
 	f := newFixedFixture(t, "http-sse", false, false, true)
 	f.conn.SetDeadline(time.Now().Add(3 * time.Second))
 	start := time.Now()
@@ -227,8 +227,8 @@ func TestV2ByteThresholdSchedulesAckBeforeTimer(t *testing.T) {
 	}
 }
 
-func TestV2AdmittedButNotStartedConnectionCannotEscapeClose(t *testing.T) {
-	m, p := auditChooser(t, "http://127.0.0.1:1")
+func TestAdmittedButNotStartedConnectionCannotEscapeClose(t *testing.T) {
+	m, p := testChooser(t, "http://127.0.0.1:1")
 	local, client := net.Pipe()
 	defer client.Close()
 	ctx, cancel := context.WithCancel(m.ctx)

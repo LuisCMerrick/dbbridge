@@ -20,11 +20,11 @@ import (
 	"time"
 )
 
-func TestAudit20261017RecoveryStopsAfterTrustedSelectionRefusal(t *testing.T) {
+func TestRecoveryStopsAfterTrustedSelectionRefusal(t *testing.T) {
 	var refused atomic.Int64
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/peer/probe" {
-			auditProbeResponse(w, r, true)
+			testProbeResponse(w, r, true)
 			return
 		}
 		refused.Add(1)
@@ -33,7 +33,7 @@ func TestAudit20261017RecoveryStopsAfterTrustedSelectionRefusal(t *testing.T) {
 		json.NewEncoder(w).Encode(protocol.ErrorResponse{Code: protocol.ErrUnauthorized, Retryable: false})
 	}))
 	defer ts.Close()
-	m, p := auditChooser(t, ts.URL)
+	m, p := testChooser(t, ts.URL)
 	local, client := net.Pipe()
 	defer client.Close()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -60,7 +60,7 @@ func TestAudit20261017RecoveryStopsAfterTrustedSelectionRefusal(t *testing.T) {
 
 // End-to-end: HTTP control remains healthy, the first recovery carrier is
 // unavailable at the primary endpoint, and the backup is fully operational.
-func TestAudit20261017RecoverySkipsFailedReattach(t *testing.T) {
+func TestRecoverySkipsFailedReattach(t *testing.T) {
 	backend, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -78,8 +78,8 @@ func TestAudit20261017RecoverySkipsFailedReattach(t *testing.T) {
 			go func() { defer sockets.Delete(c); defer c.Close(); io.Copy(c, c) }()
 		}
 	}()
-	t.Setenv("AUDIT_20261017_TOKEN", "isolated-audit-credential")
-	b := &config.Config{Node: config.NodeConfig{ID: "B"}, HTTP: config.HTTPConfig{Enabled: true}, Auth: config.AuthConfig{InboundPeers: []config.InboundPeerConfig{{ID: "A", TokenEnvs: []string{"AUDIT_20261017_TOKEN"}, AllowedTargets: []string{"db"}, MaxSessions: 10}}}, Targets: map[string]config.TargetConfig{"db": {Address: backend.Addr().String()}}, Transport: config.TransportConfig{HeartbeatRaw: "50ms", FailureDetectTimeoutRaw: "500ms", Recovery: config.RecoveryConfig{EnabledRaw: true, GraceRaw: "1200ms", BarrierTimeoutRaw: "100ms"}}}
+	t.Setenv("DBB_TEST_TOKEN", "test-credential")
+	b := &config.Config{Node: config.NodeConfig{ID: "B"}, HTTP: config.HTTPConfig{Enabled: true}, Auth: config.AuthConfig{InboundPeers: []config.InboundPeerConfig{{ID: "A", TokenEnvs: []string{"DBB_TEST_TOKEN"}, AllowedTargets: []string{"db"}, MaxSessions: 10}}}, Targets: map[string]config.TargetConfig{"db": {Address: backend.Addr().String()}}, Transport: config.TransportConfig{HeartbeatRaw: "50ms", FailureDetectTimeoutRaw: "500ms", Recovery: config.RecoveryConfig{EnabledRaw: true, GraceRaw: "1200ms", BarrierTimeoutRaw: "100ms"}}}
 	if err = b.ApplyDefaultsAndValidate(); err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +101,7 @@ func TestAudit20261017RecoverySkipsFailedReattach(t *testing.T) {
 		base.ServeHTTP(w, r)
 	}))
 	backup := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { backupRequests.Add(1); base.ServeHTTP(w, r) }))
-	a := &config.Config{Node: config.NodeConfig{ID: "A"}, Peers: []config.PeerConfig{{ID: "B", ExpectedNodeID: "B", CredentialRef: "B", TokenEnv: "AUDIT_20261017_TOKEN", Endpoints: []config.EndpointConfig{{ID: "primary", URL: primary.URL, Priority: 0}, {ID: "backup", URL: backup.URL, Priority: 1}}, Failover: config.FailoverConfig{CooldownRaw: "5s"}}}, Listeners: []config.ListenerConfig{{ID: "local", Listen: "127.0.0.1:0", Peer: "B", Target: "db"}}, Transport: config.TransportConfig{Protocol: "auto", HeartbeatRaw: "50ms", FailureDetectTimeoutRaw: "500ms", AckMaxDelayRaw: "30ms", ControlRequestTimeoutRaw: "250ms", Recovery: config.RecoveryConfig{EnabledRaw: true, GraceRaw: "1200ms", BarrierTimeoutRaw: "100ms"}}}
+	a := &config.Config{Node: config.NodeConfig{ID: "A"}, Peers: []config.PeerConfig{{ID: "B", ExpectedNodeID: "B", CredentialRef: "B", TokenEnv: "DBB_TEST_TOKEN", Endpoints: []config.EndpointConfig{{ID: "primary", URL: primary.URL, Priority: 0}, {ID: "backup", URL: backup.URL, Priority: 1}}, Failover: config.FailoverConfig{CooldownRaw: "5s"}}}, Listeners: []config.ListenerConfig{{ID: "local", Listen: "127.0.0.1:0", Peer: "B", Target: "db"}}, Transport: config.TransportConfig{Protocol: "auto", HeartbeatRaw: "50ms", FailureDetectTimeoutRaw: "500ms", AckMaxDelayRaw: "30ms", ControlRequestTimeoutRaw: "250ms", Recovery: config.RecoveryConfig{EnabledRaw: true, GraceRaw: "1200ms", BarrierTimeoutRaw: "100ms"}}}
 	if err = a.ApplyDefaultsAndValidate(); err != nil {
 		t.Fatal(err)
 	}

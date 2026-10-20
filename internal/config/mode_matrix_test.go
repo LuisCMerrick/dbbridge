@@ -7,15 +7,14 @@ import (
 	"testing"
 )
 
-func TestV2StrictConfigurationBounds(t *testing.T) {
+func TestStrictConfigurationBounds(t *testing.T) {
 	for _, tc := range []struct{ name, yaml string }{
 		{"network", "targets:\n  db: {network: udp, address: '127.0.0.1:3306'}\n"},
 		{"target_port", "targets:\n  db: {network: tcp, address: '127.0.0.1:0'}\n"},
 		{"target_host", "targets:\n  db: {network: tcp, address: ':3306'}\n"},
 		{"overlap", "http: {enabled: true, listen: '0.0.0.0:8888'}\nadmin: {enabled: true, listen: '127.0.0.1:8888'}\n"},
 		{"receipt_capacity", "transport: {up_max_inflight_frames: 32, receipt_limit_per_session: 64}\n"},
-		{"coalesce_limit", "transport: {max_coalesce_delay: 2ms}\n"},
-		{"removed_noop_knob", "transport: {resume_max_retries: 5}\n"},
+		{"unknown_key", "transport: {resume_max_retries: 5}\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			p := filepath.Join(t.TempDir(), "config.yaml")
@@ -29,7 +28,7 @@ func TestV2StrictConfigurationBounds(t *testing.T) {
 	}
 }
 
-func TestV2ExampleModeMatrix(t *testing.T) {
+func TestExampleModeMatrix(t *testing.T) {
 	t.Setenv("DBB_TOKEN_A_TO_B", "matrix-a-to-b")
 	t.Setenv("DBB_TOKEN_B_TO_A", "matrix-b-to-a")
 	for _, node := range []string{"a", "b"} {

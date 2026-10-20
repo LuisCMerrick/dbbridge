@@ -8,8 +8,8 @@ import (
 	"time"
 )
 
-func TestAuditUnexpectedSSEEOFClosesClient(t *testing.T) {
-	e := reviewIngress(t, "http-sse", "eof_stream")
+func TestUnexpectedSSEEOFClosesClient(t *testing.T) {
+	e := e2eIngress(t, "http-sse", "eof_stream")
 	e.conn.SetReadDeadline(time.Now().Add(time.Second))
 	_, err := e.conn.Read(make([]byte, 1))
 	if ne, ok := err.(net.Error); ok && ne.Timeout() {
@@ -19,8 +19,8 @@ func TestAuditUnexpectedSSEEOFClosesClient(t *testing.T) {
 		t.Fatal("expected closed client")
 	}
 }
-func TestAuditPeerRecoveryOverrideIsSent(t *testing.T) {
-	e := reviewIngress(t, "ws", "peer_recovery_off")
+func TestPeerRecoveryOverrideIsSent(t *testing.T) {
+	e := e2eIngress(t, "ws", "peer_recovery_off")
 	e.conn.Write([]byte("ok"))
 	p := make([]byte, 2)
 	e.conn.SetReadDeadline(time.Now().Add(time.Second))
@@ -33,8 +33,8 @@ func TestAuditPeerRecoveryOverrideIsSent(t *testing.T) {
 		}
 	}
 }
-func TestAuditDownstreamOffsetGapIsFatal(t *testing.T) {
-	e := reviewIngress(t, "http-sse", "offset_gap")
+func TestDownstreamOffsetGapIsFatal(t *testing.T) {
+	e := e2eIngress(t, "http-sse", "offset_gap")
 	e.conn.SetReadDeadline(time.Now().Add(time.Second))
 	_, err := e.conn.Read(make([]byte, 1))
 	if ne, ok := err.(net.Error); ok && ne.Timeout() {
@@ -44,8 +44,8 @@ func TestAuditDownstreamOffsetGapIsFatal(t *testing.T) {
 		t.Fatal("invalid bytes delivered")
 	}
 }
-func TestAuditSecondaryEndpointUsedAfterPrimaryFails(t *testing.T) {
-	e := reviewIngress(t, "ws", "failover_create")
+func TestSecondaryEndpointUsedAfterPrimaryFails(t *testing.T) {
+	e := e2eIngress(t, "ws", "failover_create")
 	e.conn.SetDeadline(time.Now().Add(2 * time.Second))
 	e.conn.Write([]byte("backup"))
 	p := make([]byte, 6)

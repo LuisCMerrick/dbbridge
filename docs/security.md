@@ -23,7 +23,7 @@
 
 ## 2. Hardening checklist
 
-1. **TLS on every network hop.** Either `http.tls` on the egress, or `http.listen` on loopback behind a local TLS-terminating proxy. Keep `peers[].tls.verify: true` (the default); use `tls.ca_file` for a private CA. Do not set `allow_insecure_http`, `http.allow_insecure_listen`, `tls.allow_insecure_skip_verify` or the deprecated `transport.allow_insecure_remote_http` outside a lab.
+1. **TLS on every network hop.** Either `http.tls` on the egress, or `http.listen` on loopback behind a local TLS-terminating proxy. Keep `peers[].tls.verify: true` (the default); use `tls.ca_file` for a private CA. Do not set `allow_insecure_http`, `http.allow_insecure_listen`, or `tls.allow_insecure_skip_verify` outside a lab.
 2. **One token per direction and identity.** `gen-config` uses one shared token for both directions of a pair for convenience; for production, give each direction its own token (see the production example in [Examples](examples.md#4-production-pair-with-tls-and-a-credentials-file)). Tokens: 32 random bytes (`openssl rand -hex 32`).
 3. **Token files, not environment variables**, so that tokens can be rotated without a restart (§3).
 4. **Least-privilege ACLs.** List only the needed targets in `allowed_targets`; set `allowed_cidrs` on every target, and always on host-name targets.

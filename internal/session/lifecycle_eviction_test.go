@@ -9,8 +9,8 @@ import (
 	"time"
 )
 
-func TestV2OldWorkerCannotCloseOrSuspendRecovery(t *testing.T) {
-	s, backend := auditSession(t, true)
+func TestOldWorkerCannotCloseOrSuspendRecovery(t *testing.T) {
+	s, backend := testSession(t, true)
 	s.SetTransportMode("ws")
 	stream, err := s.ReserveStream(1, "ws")
 	if err != nil {
@@ -37,7 +37,7 @@ func TestV2OldWorkerCannotCloseOrSuspendRecovery(t *testing.T) {
 		}
 		time.Sleep(time.Millisecond)
 	}
-	req := auditReq("barrier-recovery")
+	req := testReq("barrier-recovery")
 	req.UpNextOffset = "23"
 	result := make(chan error, 1)
 	go func() { _, e := s.Resume(req, time.Second); result <- e }()
@@ -80,8 +80,8 @@ func TestV2OldWorkerCannotCloseOrSuspendRecovery(t *testing.T) {
 	}
 }
 
-func TestV2RecoveryRequiresCurrentStreamChallenge(t *testing.T) {
-	s, _ := auditSession(t, true)
+func TestRecoveryRequiresCurrentStreamChallenge(t *testing.T) {
+	s, _ := testSession(t, true)
 	s.SetTransportMode("ws")
 	id, _ := s.ReserveStream(1, "ws")
 	s.ActivateDataPlane(id)
@@ -90,7 +90,7 @@ func TestV2RecoveryRequiresCurrentStreamChallenge(t *testing.T) {
 		t.Fatal(err)
 	}
 	s.Suspend(time.Second, nil)
-	if _, err = s.Resume(auditReq("new-challenge"), time.Second); err != nil {
+	if _, err = s.Resume(testReq("new-challenge"), time.Second); err != nil {
 		t.Fatal(err)
 	}
 	id, _ = s.ReserveStream(2, "ws")

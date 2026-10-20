@@ -2,7 +2,7 @@ package stream
 
 import "testing"
 
-func TestAudit20261018ByteWindowCountsAllocatedCapacity(t *testing.T) {
+func TestByteWindowCountsAllocatedCapacity(t *testing.T) {
 	const n = 4097
 	w := NewByteWindow(0, n)
 	if err := w.Append(0, make([]byte, n)); err != nil {

@@ -26,7 +26,7 @@ func (s *ingressSession) recover(cause error, strategy string) (success bool) {
 	}
 	if s.deadline.IsZero() {
 		// The recovery window and the retention lease start at the fault
-		// decision, not here: a final ACK may have run in between (3.5(1)).
+		// decision, not here: a final ACK may have run in between.
 		if s.faultTime.IsZero() {
 			s.faultTime = started
 		}
@@ -105,11 +105,11 @@ func (s *ingressSession) recover(cause error, strategy string) (success bool) {
 		return false
 	}
 	defer s.m.cfg.Resources.Recovery.Put(1)
-	if old != nil && s.carrierFailure(nil, cause) {
+	if old != nil && s.carrierFailure(context.Background(), cause) {
 		// Record the fault before the first candidate selection: the carrier
 		// that just failed cools down for this fault cycle, so the selector
 		// prefers the same address's other carrier or another address and
-		// never returns straight to it (requirements 3.2(4), 3.8).
+		// never returns straight to it.
 		s.m.linkManagers[s.p.ID].RecordTransportDrop(old.endpoint.ID, old.mode)
 		if old.mode == "ws" {
 			s.m.invalidatePrecheck(s.p.ID, old.c.URL(), s.owner)
@@ -283,7 +283,7 @@ func oldMode(g *generation) string {
 
 // pathFailure reports a transport-level failure of a real request: no answer
 // from the peer at all, or an unverified gateway 502/503/504, and not our own
-// cancellation or local contention. It cools the whole address down (3.2(4)).
+// cancellation or local contention. It cools the whole address down.
 func pathFailure(ctx context.Context, e error) bool {
 	if e == nil || localOrCanceled(ctx, e) || localResourceError(e) {
 		return false

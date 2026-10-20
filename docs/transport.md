@@ -57,9 +57,9 @@ The two nodes do not need identical `transport` sections. At session creation th
 
 Keeping both nodes' `transport` sections the same makes behaviour easier to predict, but it is not required.
 
-### Flow-limits extension
+### Flow limits
 
-The ingress offers the `flow-limits` extension with the request header `X-DBB-Features: flow-limits` on `POST /v1/sessions`. When offered, the egress adds two fields to the create response: `limits.up_receipt_limit` (its `receipt_limit_per_session`) and `limits.down_max_frames` (512). Advertised values above 1,048,576 are read as 1,048,576. On a negotiated session the egress sets `ack_requested: true` in its `ack_up` control message when half of either limit is in use, and the ingress acknowledges at once. The ingress also acknowledges when unacknowledged upstream frames reach `min(up_max_inflight_frames + 4, up_receipt_limit / 2)` or downstream frames reach `min(32, down_max_frames / 4)`; without the extension it uses `up_max_inflight_frames + 4` and 32. Nodes that do not offer the extension interoperate unchanged.
+Every create response carries the egress's flow limits: `limits.up_receipt_limit` (its `receipt_limit_per_session`) and `limits.down_max_frames` (512). Advertised values above 1,048,576 are read as 1,048,576; a response without them is a protocol error. The egress sets `ack_requested: true` in its `ack_up` control message when half of either limit is in use, and the ingress acknowledges at once. The ingress also acknowledges when unacknowledged upstream frames reach `min(up_max_inflight_frames + 4, up_receipt_limit / 2)` or downstream frames reach `min(32, down_max_frames / 4)`.
 
 ## 3. Frames, windows and acknowledgements
 
@@ -73,7 +73,6 @@ The ingress offers the `flow-limits` extension with the request header `X-DBB-Fe
 | `receipt_limit_per_session` | Upstream receipts the egress keeps for duplicate detection. | Raise only together with `up_max_inflight_frames`. |
 | `ack_batch_bytes`, `ack_max_delay` | Downstream acknowledgement after this many bytes or this much time, whichever comes first. The ingress uses `min(ack_batch_bytes, negotiated downstream buffer / 2)`. | Rarely. |
 | `up_ack_max_delay` | Upper bound for delaying an upstream acknowledgement. | Rarely. |
-| `max_coalesce_delay` | Accepted for compatibility; no effect. | — |
 
 When a buffer is full the session waits up to `backpressure_timeout` for space; then it ends with reason `timeout`. While a session is suspended for recovery, the database side is not closed for backpressure; `recovery.grace` and `suspended_buffer_limit` bound it instead.
 

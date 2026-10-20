@@ -65,7 +65,7 @@ func (s *ingressSession) receive(g *generation) {
 				e = s.advanceUpLocked(off)
 				s.upFramesUnconfirmed += before - len(s.frames)
 				s.upFINApplied = s.upFINApplied || msg.ctrl.UpFinApplied
-				s.notifyAckLocked(msg.ctrl.UpFinApplied || (msg.ctrl.AckRequested && s.limits.FlowLimitsNegotiated()) || s.upNext-s.upAck >= uint64(s.limits.UpWindowBytes) || s.upFramesUnconfirmed >= upFramesAckThreshold(s.limits))
+				s.notifyAckLocked(msg.ctrl.UpFinApplied || msg.ctrl.AckRequested || s.upNext-s.upAck >= uint64(s.limits.UpWindowBytes) || s.upFramesUnconfirmed >= upFramesAckThreshold(s.limits))
 				s.wake()
 			}
 			s.mu.Unlock()

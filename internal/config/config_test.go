@@ -36,10 +36,10 @@ func TestConfigValidation(t *testing.T) {
 	}
 }
 
-func TestConfigAuditValidationRules(t *testing.T) {
+func TestConfigValidationRules(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// 1. Invalid CIDR must fail config validation (DBB-20)
+	// 1. Invalid CIDR must fail config validation
 	invalidCIDRYAML := `
 node:
   id: node-1
@@ -52,8 +52,6 @@ peers:
     endpoints:
       - id: ep1
         url: "http://127.0.0.1:18080"
-transport:
-  allow_insecure_remote_http: true
 `
 	p1 := filepath.Join(tmpDir, "invalid_cidr.yaml")
 	_ = os.WriteFile(p1, []byte(invalidCIDRYAML), 0600)
@@ -62,7 +60,7 @@ transport:
 		t.Errorf("expected config load to fail on invalid CIDR, got nil")
 	}
 
-	// 2. Plaintext remote HTTP rejected when allow_insecure_remote_http is false (DBB-16)
+	// 2. Plaintext HTTP to a remote peer is rejected without allow_insecure_http.
 	remoteHTTPYAML := `
 node:
   id: node-1
@@ -71,8 +69,6 @@ peers:
     endpoints:
       - id: ep1
         url: "http://example.com:18080"
-transport:
-  allow_insecure_remote_http: false
 `
 	p2 := filepath.Join(tmpDir, "remote_http.yaml")
 	_ = os.WriteFile(p2, []byte(remoteHTTPYAML), 0600)
@@ -81,7 +77,7 @@ transport:
 		t.Errorf("expected config load to reject remote plaintext http, got nil")
 	}
 
-	// 3. Zero or negative heartbeat must fail (DBB-24)
+	// 3. Zero or negative heartbeat must fail
 	zeroHeartbeatYAML := `
 node:
   id: node-1
@@ -92,7 +88,6 @@ peers:
         url: "http://127.0.0.1:18080"
 transport:
   heartbeat: 0s
-  allow_insecure_remote_http: true
 `
 	p3 := filepath.Join(tmpDir, "zero_heartbeat.yaml")
 	_ = os.WriteFile(p3, []byte(zeroHeartbeatYAML), 0600)

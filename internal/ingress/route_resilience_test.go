@@ -16,7 +16,7 @@ import (
 	"time"
 )
 
-type auditRouteEnv struct {
+type testRouteEnv struct {
 	manager                                                         *IngressManager
 	conn                                                            net.Conn
 	registry                                                        *session.Registry
@@ -24,9 +24,9 @@ type auditRouteEnv struct {
 	primaryCreate, backupCreate, primaryResume, backupResume, dials atomic.Int64
 }
 
-func auditRoutes(t *testing.T, badCreate bool, mode string) *auditRouteEnv {
+func testRoutes(t *testing.T, badCreate bool, mode string) *testRouteEnv {
 	t.Helper()
-	e := &auditRouteEnv{}
+	e := &testRouteEnv{}
 	e.badCreate.Store(badCreate)
 	backend, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -49,8 +49,8 @@ func auditRoutes(t *testing.T, badCreate bool, mode string) *auditRouteEnv {
 			}()
 		}
 	}()
-	t.Setenv("AUDIT_ROUTE_TOKEN", "audit-route-token")
-	b := &config.Config{Node: config.NodeConfig{ID: "B"}, Auth: config.AuthConfig{InboundPeers: []config.InboundPeerConfig{{ID: "A", TokenEnvs: []string{"AUDIT_ROUTE_TOKEN"}, AllowedTargets: []string{"db"}}}}, Targets: map[string]config.TargetConfig{"db": {Address: backend.Addr().String()}}, Transport: config.TransportConfig{HeartbeatRaw: "50ms", FailureDetectTimeoutRaw: "500ms", Recovery: config.RecoveryConfig{GraceRaw: "1400ms", BarrierTimeoutRaw: "100ms"}}}
+	t.Setenv("DBB_TEST_ROUTE_TOKEN", "test-credential")
+	b := &config.Config{Node: config.NodeConfig{ID: "B"}, Auth: config.AuthConfig{InboundPeers: []config.InboundPeerConfig{{ID: "A", TokenEnvs: []string{"DBB_TEST_ROUTE_TOKEN"}, AllowedTargets: []string{"db"}}}}, Targets: map[string]config.TargetConfig{"db": {Address: backend.Addr().String()}}, Transport: config.TransportConfig{HeartbeatRaw: "50ms", FailureDetectTimeoutRaw: "500ms", Recovery: config.RecoveryConfig{GraceRaw: "1400ms", BarrierTimeoutRaw: "100ms"}}}
 	if err = b.ApplyDefaultsAndValidate(); err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +85,7 @@ func auditRoutes(t *testing.T, badCreate bool, mode string) *auditRouteEnv {
 		}
 		base.ServeHTTP(w, r)
 	}))
-	a := &config.Config{Node: config.NodeConfig{ID: "A"}, Peers: []config.PeerConfig{{ID: "B", ExpectedNodeID: "B", CredentialRef: "B", TokenEnv: "AUDIT_ROUTE_TOKEN", Endpoints: []config.EndpointConfig{{ID: "primary", URL: primary.URL}, {ID: "backup", URL: backup.URL, Priority: 10}}, Failover: config.FailoverConfig{CooldownRaw: "0s"}}}, Listeners: []config.ListenerConfig{{ID: "db", Listen: "127.0.0.1:0", Peer: "B", Target: "db"}}, Transport: config.TransportConfig{Protocol: mode, HeartbeatRaw: "50ms", FailureDetectTimeoutRaw: "500ms", AckMaxDelayRaw: "30ms", ControlRequestTimeoutRaw: "200ms", CreateRetryTimeoutRaw: "1400ms", Recovery: config.RecoveryConfig{GraceRaw: "1400ms", BarrierTimeoutRaw: "100ms"}}}
+	a := &config.Config{Node: config.NodeConfig{ID: "A"}, Peers: []config.PeerConfig{{ID: "B", ExpectedNodeID: "B", CredentialRef: "B", TokenEnv: "DBB_TEST_ROUTE_TOKEN", Endpoints: []config.EndpointConfig{{ID: "primary", URL: primary.URL}, {ID: "backup", URL: backup.URL, Priority: 10}}, Failover: config.FailoverConfig{CooldownRaw: "0s"}}}, Listeners: []config.ListenerConfig{{ID: "db", Listen: "127.0.0.1:0", Peer: "B", Target: "db"}}, Transport: config.TransportConfig{Protocol: mode, HeartbeatRaw: "50ms", FailureDetectTimeoutRaw: "500ms", AckMaxDelayRaw: "30ms", ControlRequestTimeoutRaw: "200ms", CreateRetryTimeoutRaw: "1400ms", Recovery: config.RecoveryConfig{GraceRaw: "1400ms", BarrierTimeoutRaw: "100ms"}}}
 	if err = a.ApplyDefaultsAndValidate(); err != nil {
 		t.Fatal(err)
 	}
@@ -112,10 +112,10 @@ func auditRoutes(t *testing.T, badCreate bool, mode string) *auditRouteEnv {
 	return e
 }
 
-func TestAudit20261018CreateReplyLossDoesNotTryBackup(t *testing.T) {
+func TestCreateReplyLossDoesNotTryBackup(t *testing.T) {
 	for _, mode := range []string{"auto", "ws", "http-sse"} {
 		t.Run(mode, func(t *testing.T) {
-			e := auditRoutes(t, true, mode)
+			e := testRoutes(t, true, mode)
 			e.conn.SetReadDeadline(time.Now().Add(3 * time.Second))
 			b := make([]byte, 5)
 			_, err := io.ReadFull(e.conn, b)
@@ -127,14 +127,14 @@ func TestAudit20261018CreateReplyLossDoesNotTryBackup(t *testing.T) {
 	}
 }
 
-func TestAudit20261018ResumeFailureDoesNotTryBackup(t *testing.T) {
+func TestResumeFailureDoesNotTryBackup(t *testing.T) {
 	for _, mode := range []string{"auto", "ws", "http-sse"} {
-		t.Run(mode, func(t *testing.T) { auditResumeBackup(t, mode) })
+		t.Run(mode, func(t *testing.T) { testResumeBackup(t, mode) })
 	}
 }
 
-func auditResumeBackup(t *testing.T, mode string) {
-	e := auditRoutes(t, false, mode)
+func testResumeBackup(t *testing.T, mode string) {
+	e := testRoutes(t, false, mode)
 	e.conn.SetReadDeadline(time.Now().Add(3 * time.Second))
 	b := make([]byte, 5)
 	if _, err := io.ReadFull(e.conn, b); err != nil {
@@ -171,14 +171,14 @@ func auditResumeBackup(t *testing.T, mode string) {
 	t.Logf("after transport loss: exact echo=%q primary_resume=%d backup_resume=%d backend_dials=%d epoch=%d original_backend=true", b, e.primaryResume.Load(), e.backupResume.Load(), e.dials.Load(), s.GetEpoch())
 }
 
-func TestAudit20261018CodecWaitMisclassifiedAsNetworkLoss(t *testing.T) {
+func TestCodecWaitMisclassifiedAsNetworkLoss(t *testing.T) {
 	for _, mode := range []string{"ws", "http-sse"} {
-		t.Run(mode, func(t *testing.T) { auditCodecWait(t, mode) })
+		t.Run(mode, func(t *testing.T) { testCodecWait(t, mode) })
 	}
 }
 
-func auditCodecWait(t *testing.T, mode string) {
-	e := reviewIngress(t, mode, "")
+func testCodecWait(t *testing.T, mode string) {
+	e := e2eIngress(t, mode, "")
 	until := time.Now().Add(time.Second)
 	var s *ingressSession
 	for time.Now().Before(until) {

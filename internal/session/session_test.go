@@ -342,7 +342,7 @@ func (b *blockingConn) Write(buf []byte) (int, error) {
 	return len(buf), nil
 }
 
-func TestAuditResumeFencesInflightWrite(t *testing.T) {
+func TestResumeFencesInflightWrite(t *testing.T) {
 	blockCh := make(chan struct{})
 	doneCh := make(chan struct{})
 	bConn := &blockingConn{
@@ -412,7 +412,7 @@ func TestAuditResumeFencesInflightWrite(t *testing.T) {
 	}
 }
 
-func TestAuditSuspendMustNotRefreshDeadline(t *testing.T) {
+func TestSuspendMustNotRefreshDeadline(t *testing.T) {
 	conn := &dummyConn{}
 	s := session.NewSession("peer-a", "t1", "inst-1", conn, 1024*1024, 2*1024*1024, 8, 64, true)
 	streamID, _ := s.ReserveSSEStream(1)
@@ -429,7 +429,7 @@ func TestAuditSuspendMustNotRefreshDeadline(t *testing.T) {
 	}
 }
 
-func TestAuditResumeMustRetainActivationDeadline(t *testing.T) {
+func TestResumeMustRetainActivationDeadline(t *testing.T) {
 	conn := &dummyConn{}
 	s := session.NewSession("peer-a", "t1", "inst-1", conn, 1024*1024, 2*1024*1024, 8, 64, true)
 	streamID, _ := s.ReserveSSEStream(1)
@@ -461,7 +461,7 @@ func TestAuditResumeMustRetainActivationDeadline(t *testing.T) {
 	}
 }
 
-func TestAuditRejectACKBeyondProduced(t *testing.T) {
+func TestRejectACKBeyondProduced(t *testing.T) {
 	conn := &dummyConn{}
 	s := session.NewSession("peer-a", "t1", "inst-1", conn, 1024*1024, 2*1024*1024, 8, 64, true)
 
@@ -481,7 +481,7 @@ func TestAuditRejectACKBeyondProduced(t *testing.T) {
 	}
 }
 
-func TestAuditDuplicateInflightFrameIsQueuedAgain(t *testing.T) {
+func TestDuplicateInflightFrameIsQueuedAgain(t *testing.T) {
 	blockCh := make(chan struct{})
 	bConn := &blockingConn{
 		writeBlockCh: blockCh,
@@ -520,7 +520,7 @@ func TestAuditDuplicateInflightFrameIsQueuedAgain(t *testing.T) {
 	}
 }
 
-func TestAuditRegistryGlobalBudgetMustBeEnforced(t *testing.T) {
+func TestRegistryGlobalBudgetMustBeEnforced(t *testing.T) {
 	// Global buffer budget of 128 bytes
 	reg := session.NewRegistry(1024*1024, 128)
 

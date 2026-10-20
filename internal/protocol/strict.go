@@ -135,13 +135,13 @@ func Offset(s string) (uint64, error) {
 // ErrPeerProtocol is the comparable sentinel for a peer protocol violation
 // (illegal data, wrong identity or binding). transport.ErrProtocol is this
 // same value, so protocol-level validators can return errors that the
-// lifecycle classifies as fatal protocol errors (5.11) without the protocol
+// lifecycle classifies as fatal protocol errors without the protocol
 // package depending on transport.
 var ErrPeerProtocol = errors.New("invalid peer protocol")
 
 // ValidateBinding checks the Session, instance, Epoch, stream and transport
 // binding of an ACK/POST/FIN response. A mismatch wraps ErrPeerProtocol
-// (DBB_PROTOCOL_MISMATCH; 5.4.3, 5.8(16), 5.9.1(5)).
+// (DBB_PROTOCOL_MISMATCH).
 func ValidateBinding(sid, inst, ep, stream string, mode *TransportMode, wantSID, wantInst string, wantEpoch uint64, wantStream, wantMode string) error {
 	if sid != wantSID || inst != wantInst || ep != strconv.FormatUint(wantEpoch, 10) || stream == "" || stream != wantStream || mode == nil || mode.Mode != wantMode {
 		return fmt.Errorf("%w: %s: response binding mismatch", ErrPeerProtocol, ErrProtocolMismatch)
@@ -278,8 +278,7 @@ func validateShape(raw json.RawMessage, typ reflect.Type, depth int) error {
 }
 
 // responseOnlyLimits are SessionLimits fields that only an egress advertises
-// in a create response under FeatureFlowLimits; no extension lets a create
-// request carry them.
+// in a create response; a create request never carries them.
 var responseOnlyLimits = []string{"up_receipt_limit", "down_max_frames"}
 
 // rejectResponseOnlyLimits refuses a create request whose limits object

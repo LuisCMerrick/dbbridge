@@ -32,7 +32,7 @@ dbbridge <command> [options]
 | `version`（`-v`、`--version`） | 输出版本信息。 |
 | `help`（`-h`、`--help`） | 输出帮助信息。 |
 
-选项采用 Go flag 语法：一个或两个短横线，`--flag=value` 或 `--flag value`。不接受位置参数。第一个参数是选项时，以全部参数执行 `run`（`dbbridge -c peer.yaml`）；`dbbridge --install -c peer.yaml` 等同于 `dbbridge install -c peer.yaml`。不带参数时输出帮助信息，退出码为 1。`<command> --help` 把该命令的选项输出到 stderr，退出码为 0。
+选项采用 Go flag 语法：一个或两个短横线，`--flag=value` 或 `--flag value`。不接受位置参数。每个命令只接受它自己的选项。不带参数时输出帮助信息，退出码为 1。`<command> --help` 把该命令的选项输出到 stderr，退出码为 0。
 
 ### `run`、`check-config`、`install`
 
@@ -206,8 +206,6 @@ dbbridge version <version> (commit: <commit>, built: <date>, runtime: <go versio
 | `dbb_auth_credentials_stale` | gauge | 两端 | 上一次重载被拒绝、之前的凭据仍在生效时为 1。 |
 | `dbb_auth_reload_last_success_timestamp_seconds` | gauge | 两端 | 最近一次成功加载凭据的 Unix 时间。 |
 | `dbb_unbalanced_release_total` | counter | 两端 | 记账自检，应保持为 0。非零值表示存在值得报告的缺陷。 |
-
-**已弃用的名称。** `dbb_resume_success`、`dbb_resume_failed` 和 `dbb_client_close_count` 为兼容现有看板，与对应的 `_total` 名称同时输出。请改用 `_total` 名称；旧名称将在未来版本中移除。
 
 **建议的告警。** `dbb_auth_credentials_stale == 1`；`/readyz` 不是 200；`rate(dbb_dial_failed_total[5m]) > 0`；`dbb_endpoint_state{state="MISMATCHED"} == 1`；`sessions`、`metadata`、`payload` 的 `dbb_resource_in_use / dbb_resource_limit > 0.9`；`dbb_terminated_*` 或 `dbb_resume_failed_total` 持续上升。
 

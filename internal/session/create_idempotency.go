@@ -48,7 +48,8 @@ func (r *Registry) ReserveCreate(
 	now := time.Now()
 	r.expireLocked(now)
 
-	// DBB-A11: Check idempotency table FIRST to allow safe retries without rejecting on quota
+	// The idempotency table is checked before the quota so that a retry is
+	// answered from its record instead of being rejected.
 	entry, ok := r.createIdempotency[key]
 	if ok {
 		// Conflict check: parameters must match normalized request
@@ -74,7 +75,7 @@ func (r *Registry) ReserveCreate(
 		return CreateDone, entry.Response, "", ""
 	}
 
-	// Global max_sessions check (DBB-A11: including both registered and in-flight creates)
+	// max_sessions counts registered sessions and in-flight creates.
 	if r.maxSessions > 0 && (len(r.sessions)+r.pendingCreates) >= r.maxSessions {
 		return CreateFailed, nil, protocol.ErrQuotaExceeded, "maximum concurrent sessions exceeded"
 	}

@@ -42,7 +42,7 @@ func precheckSelect(t *testing.T, ws http.HandlerFunc) (string, int32, error) {
 	return mode, probes.Load(), err
 }
 
-// 3.7.2: a raw gateway refusal of the Upgrade (426 here) still falls back to
+// A raw gateway refusal of the Upgrade (426 here) still falls back to
 // SSE in auto, after a second authenticated probe of the same instance.
 func TestPrecheckGatewayRefusalStillFallsBack(t *testing.T) {
 	for _, status := range []int{400, 404, 405, 426, 501} {
@@ -53,7 +53,7 @@ func TestPrecheckGatewayRefusalStillFallsBack(t *testing.T) {
 	}
 }
 
-// 3.7.3(1,3), TF-07/TF-08: a wrong hello version or illegal hello JSON after
+// A wrong hello version or illegal hello JSON after
 // the 101 excludes the candidate; auto must not use SSE on it.
 func TestPrecheckBadHelloRejectsCandidate(t *testing.T) {
 	for name, msg := range map[string]string{"version": `{"type":"hello","protocol_version":"1.3","node_id":"B","instance_id":"bi","nonce":"%s","transport":"ws"}`, "duplicate key": `{"type":"hello","type":"hello"}`} {

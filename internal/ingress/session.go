@@ -77,8 +77,7 @@ type ingressSession struct {
 	createClient *transport.TripleTransportClient
 	// localCloseOnce/localClosedAt record the one full close of the client
 	// socket; localClosing makes later faults (caused by that close) inert
-	// while a recovery-disabled session settles its terminal reason
-	// (DBB-AUD-05, FR-11, 5.10.1).
+	// while a recovery-disabled session settles its terminal reason.
 	localCloseOnce sync.Once
 	localClosedAt  time.Time
 	localClosing   atomic.Bool
@@ -134,7 +133,7 @@ func (s *ingressSession) stopRecovery(lease *resource.RetentionLease, reason err
 		if !s.deadline.IsZero() && terminal.After(s.deadline) {
 			terminal = s.deadline
 		}
-		// Recovery disabled: T_terminal is the fault decision itself (5.10.1),
+		// Recovery disabled: T_terminal is the fault decision itself,
 		// so a terminal query that ran after the early local close is not
 		// hidden from local_close_ms.
 		if !s.recovery && !recovering && !s.faultTime.IsZero() && s.faultTime.Before(terminal) {
@@ -219,13 +218,11 @@ func (s *ingressSession) carrierFailure(parent context.Context, e error) bool {
 	if s.closed.Load() || s.ctx.Err() != nil {
 		return false
 	}
-	if parent != nil {
-		if parent.Err() != nil {
-			return false
-		}
-		if d, ok := parent.Deadline(); ok && !time.Now().Before(d) {
-			return false
-		}
+	if parent.Err() != nil {
+		return false
+	}
+	if d, ok := parent.Deadline(); ok && !time.Now().Before(d) {
+		return false
 	}
 	return true
 }
@@ -239,7 +236,7 @@ func (s *ingressSession) coolCarrier(ep *link.Endpoint, c *transport.TripleTrans
 	}
 }
 
-// countTermination updates the termination counters (10.4). Normal closes
+// countTermination updates the termination counters. Normal closes
 // and node shutdown are not failures. A failed session with recovery
 // disabled is a direct termination; with recovery enabled it is a final
 // failure termination, and a failed resume as well when it ended inside a
@@ -358,7 +355,7 @@ func (m *IngressManager) handleConn(ctx context.Context, cancel context.CancelFu
 		return
 	}
 	// The first attach is bounded by the create deadline and by the owner's
-	// unattached timeout, whichever is earlier (5.4).
+	// unattached timeout, whichever is earlier.
 	attachCtx, attachCancel := createCtx, context.CancelFunc(func() {})
 	s.mu.Lock()
 	attachBy := s.attachBy
@@ -369,8 +366,8 @@ func (m *IngressManager) handleConn(ctx context.Context, cancel context.CancelFu
 	}
 	g, e := s.attach(attachCtx, c, ep, 1, mode, "")
 	// The first carrier never came up: unless the cause was local, cool that
-	// carrier for every new selection, whatever the recovery mode (3.2(4),
-	// 3.8). attach already closed and unbound the generation.
+	// carrier for every new selection, whatever the recovery mode.
+	// attach already closed and unbound the generation.
 	carrierFailed := e != nil && s.carrierFailure(attachCtx, e)
 	attachCancel()
 	if e != nil {
@@ -415,7 +412,7 @@ func (m *IngressManager) handleConn(ctx context.Context, cancel context.CancelFu
 			if !normal && !f.fatal && current != nil {
 				if !s.recovery && s.finAdjacent() {
 					// Recovery disabled: this transport failure is terminal
-					// now (10.1.1). Close the client first; the final-ACK
+					// now. Close the client first; the final-ACK
 					// query only settles normal-vs-failure afterwards and
 					// must not use the 1s local-close budget.
 					s.closeLocal()
@@ -431,9 +428,9 @@ func (m *IngressManager) handleConn(ctx context.Context, cancel context.CancelFu
 				return
 			}
 			if f.fatal || !s.recovery {
-				if !f.fatal && current != nil && s.carrierFailure(nil, f.err) {
+				if !f.fatal && current != nil && s.carrierFailure(context.Background(), f.err) {
 					// Recovery disabled: the session ends, but the carrier
-					// that failed still cools down for new selections (3.8).
+					// that failed still cools down for new selections.
 					s.m.linkManagers[s.p.ID].RecordTransportDrop(current.endpoint.ID, current.mode)
 					if current.mode == "ws" {
 						s.m.invalidatePrecheck(s.p.ID, current.c.URL(), s.owner)

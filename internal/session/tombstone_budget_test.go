@@ -9,8 +9,8 @@ import (
 	"unsafe"
 )
 
-func TestAudit20261018ResumeIDRetainedOutsideTombstoneBudget(t *testing.T) {
-	s, _ := auditSession(t, true)
+func TestResumeIDRetainedOutsideTombstoneBudget(t *testing.T) {
+	s, _ := testSession(t, true)
 	metadata := resource.New(1 << 20)
 	r := NewRegistry(1<<20, 4<<20)
 	r.SetResources(nil, metadata, 10*time.Minute)
@@ -22,14 +22,14 @@ func TestAudit20261018ResumeIDRetainedOutsideTombstoneBudget(t *testing.T) {
 	r.CompleteCreate("create-key", &protocol.CreateSessionResponse{SessionID: s.ID})
 	// Production active-session metadata is returned by onFinalize. Its create
 	// record is the remaining reservation during the tombstone guarantee.
-	q := auditReq(strings.Repeat("r", 12<<10))
+	q := testReq(strings.Repeat("r", 12<<10))
 	if _, err := s.Resume(q, time.Second); err == nil {
 		t.Fatal("accepted a 12 KiB resume ID")
 	}
 	if s.GetEpoch() != 1 {
 		t.Fatal("rejected request changed the epoch")
 	}
-	q = auditReq(strings.Repeat("r", 128))
+	q = testReq(strings.Repeat("r", 128))
 	response, err := s.Resume(q, time.Second)
 	if err != nil {
 		t.Fatal(err)
@@ -55,7 +55,7 @@ func TestAudit20261018ResumeIDRetainedOutsideTombstoneBudget(t *testing.T) {
 }
 
 func TestResumeTombstoneReservationRefunded(t *testing.T) {
-	s, _ := auditSession(t, true)
+	s, _ := testSession(t, true)
 	metadata := resource.New(1 << 20)
 	r := NewRegistry(1<<20, 4<<20)
 	r.SetResources(nil, metadata, 20*time.Millisecond)
@@ -65,7 +65,7 @@ func TestResumeTombstoneReservationRefunded(t *testing.T) {
 	}
 	r.Register(s)
 	r.CompleteCreate("key", &protocol.CreateSessionResponse{SessionID: s.ID})
-	if _, err := s.Resume(auditReq(strings.Repeat("r", 128)), time.Second); err != nil {
+	if _, err := s.Resume(testReq(strings.Repeat("r", 128)), time.Second); err != nil {
 		t.Fatal(err)
 	}
 	s.Close()

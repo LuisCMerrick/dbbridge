@@ -197,7 +197,7 @@ func (s *Server) runWSSession(c *websocket.Conn, sess *session.Session, ep uint6
 			return write(websocket.TextMessage, b)
 		})
 		// A session this node terminated is announced with a bound error
-		// message and a Close frame before the carrier goes away (5.11), so
+		// message and a Close frame before the carrier goes away, so
 		// the ingress ends the local session instead of treating the
 		// carrier loss as a reconnectable transport fault.
 		if notice, ok := s.terminalNotice(sess, ep, stream); ok {

@@ -46,9 +46,6 @@ uninstall options:
   --service-name      Service identity (default: dbbridge)
   --dry-run           Check that the service exists and is managed by DBBridge
 
-A first argument that is an option runs 'run' (dbbridge -c peer.yaml), and
-'dbbridge --install -c peer.yaml' is the same as 'dbbridge install -c peer.yaml'.
-
 Credentials (token files, and the auth and token settings of the configuration
 or credentials file) are re-read every auth.reload_interval and on SIGHUP
 (Linux) or 'sc.exe control <name> paramchange' (Windows). Tokens taken from
@@ -72,30 +69,17 @@ Use 'dbbridge gen-config --help' for generator options.
 `)
 }
 
-// commandFlags lists the options each command documents. The shared flag
-// set also accepts the legacy 'run --install' form, whose installation
-// options are not repeated in run's usage.
-var commandFlags = map[string][]string{
-	"run":          {"config", "c", "log-level", "log-format", "env-file", "service-name"},
-	"check-config": {"config", "c", "log-level", "log-format", "env-file", "offline"},
-	"install":      {"config", "c", "log-level", "log-format", "env-file", "service-name", "service-user", "exec-path", "start", "dry-run"},
-}
-
-// setCommandUsage makes -h print only the options of command.
+// setCommandUsage prints the options of command for -h and --help.
 func setCommandUsage(fs *flag.FlagSet, command string) {
 	fs.Usage = func() {
 		out := fs.Output()
 		fmt.Fprintf(out, "Usage: dbbridge %s [options]\n\nOptions:\n", command)
-		for _, name := range commandFlags[command] {
-			f := fs.Lookup(name)
-			if f == nil {
-				continue
-			}
+		fs.VisitAll(func(f *flag.Flag) {
 			def := ""
 			if f.DefValue != "" && f.DefValue != "false" {
 				def = fmt.Sprintf(" (default %s)", f.DefValue)
 			}
 			fmt.Fprintf(out, "  -%s\n    \t%s%s\n", f.Name, f.Usage, def)
-		}
+		})
 	}
 }

@@ -13,7 +13,7 @@ import (
 	"strings"
 )
 
-// Header definitions for DBBridge specification
+// HTTP headers of the DBBridge protocol.
 const (
 	HeaderPeerAuth        = "Authorization"
 	HeaderSessionToken    = "X-DBB-Session-Token"
@@ -97,9 +97,9 @@ type SessionLimits struct {
 	UpMaxInflightFrames int   `json:"up_max_inflight_frames"`
 	UpWindowBytes       int64 `json:"up_window_bytes"`
 	DownBufferBytes     int64 `json:"down_buffer_bytes"`
-	// Advertised by egress only when the create request offered
-	// FeatureFlowLimits (see features.go); zero and omitted otherwise.
-	// A create request never carries them (DecodeJSON rejects them there).
+	// Advertised by the egress in every create response (see
+	// flow_limits.go). A create request never carries them (DecodeJSON
+	// rejects them there).
 	UpReceiptLimit int `json:"up_receipt_limit,omitempty"`
 	DownMaxFrames  int `json:"down_max_frames,omitempty"`
 }
@@ -294,12 +294,11 @@ type WSTextControlMessage struct {
 	SessionClosed   bool    `json:"session_closed,omitempty"`
 	Transport       string  `json:"transport,omitempty"`
 	ResumeRequestID *string `json:"resume_request_id,omitempty"`
-	// AckRequested rides on ack_up only, and only for sessions that
-	// negotiated FeatureFlowLimits.
+	// AckRequested rides on ack_up only.
 	AckRequested bool `json:"ack_requested,omitempty"`
 }
 
-// WebSocket 56-byte Binary Header per Section 7.1:
+// WebSocket 56-byte binary frame header:
 // [0,1)   type, uint8, fixed 0x01 (DATA)
 // [1,2)   flags, uint8, fixed 0
 // [2,4)   reserved, uint16, fixed 0

@@ -146,8 +146,8 @@ func TestUnitAcceptedBySystemdAnalyze(t *testing.T) {
 	}
 }
 
-// X-LC-6: STOPPING=1 is sent through the same notification path.
-func TestAuditStoppingNotification(t *testing.T) {
+// STOPPING=1 is sent through the same notification path.
+func TestStoppingNotification(t *testing.T) {
 	c := &capturedNotification{}
 	if err := sendState("/run/dbbridge-notify.sock", "STOPPING=1", func(*net.UnixAddr) (notifyConnection, error) { return c, nil }); err != nil {
 		t.Fatal(err)

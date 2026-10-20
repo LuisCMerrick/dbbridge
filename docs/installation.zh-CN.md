@@ -26,7 +26,7 @@
 - SQL Server 命名实例通过 SQL Browser 服务（UDP 1434）定位，而 DBBridge 不转发 UDP：请为实例配置固定的 TCP 端口，并把它作为目标地址。
 - 数据库客户端连接的是本地 listener（例如 `127.0.0.1:13306`）。如果客户端要校验数据库的 TLS 证书，请在客户端中配置期望的服务器名称（例如驱动的“证书中的主机名”选项），因为连接的主机是回环地址。
 
-**协议。** 节点使用 DBBridge 协议 1.4。任意两个支持协议 1.4 的版本之间都能互通；可选特性按会话协商（[传输 §2](transport.zh-CN.md#2-协商值)）。
+**协议。** 节点使用 DBBridge 协议 1.4。两端设置如何协商见[传输 §2](transport.zh-CN.md#2-协商值)。
 
 ## 2. 发布包与校验和
 
@@ -206,11 +206,11 @@ Restart-Service dbbridge                 # 应用其他配置修改
 
 ## 8. 升级
 
-会话绑定在运行中的进程上。重启一个节点会结束经过它的会话；数据库客户端看到连接被关闭后重连。不同版本的节点之间可以互通（协议 1.4），因此一对节点的两端可以逐个升级，先后顺序不限。
+会话绑定在运行中的进程上。重启一个节点会结束经过它的会话；数据库客户端看到连接被关闭后重连。一对节点的两端逐个升级。
 
 对每个节点：
 
-1. 阅读 [CHANGELOG](../CHANGELOG.zh-CN.md) 中的升级说明。
+1. 阅读 [CHANGELOG](../CHANGELOG.zh-CN.md) 中的版本说明。
 2. 下载发布包并按 `SHA256SUMS` 校验（§2）。
 3. 以服务账户、用**新的**二进制校验现有配置：
    ```bash
@@ -219,7 +219,7 @@ Restart-Service dbbridge                 # 应用其他配置修改
 4. 在原安装路径上替换二进制：`sudo install -m 0755 ./dbbridge-<version>-linux-amd64/dbbridge /usr/local/bin/dbbridge`（Windows：先 `Stop-Service dbbridge`，再复制 `dbbridge.exe`）。如果用符号链接指向按版本存放的目录，切换链接即可；单元启动时运行链接当前指向的文件。
 5. 使之生效：
    - 通常执行 `sudo systemctl restart dbbridge`（Windows：`Start-Service dbbridge`）。节点最多排空 `transport.shutdown_timeout`，然后启动新二进制；
-   - 如果升级说明提到生成的服务定义有变化，或者你修改了服务定义据以计算的设置（§4.3），改为用相同的选项执行 `sudo dbbridge uninstall` 和 `sudo dbbridge install ...`。
+   - 如果版本说明提到生成的服务定义有变化，或者你修改了服务定义据以计算的设置（§4.3），改为用相同的选项执行 `sudo dbbridge uninstall` 和 `sudo dbbridge install ...`。
 6. 确认：`curl -s http://127.0.0.1:<admin 端口>/readyz` 返回 `ready`；日志中出现 `starting dbbridge peer node` 且没有错误；各 peer 的 `dbb_endpoint_state` 回到 `HEALTHY`；客户端已重连。
 7. 用同样的方式升级另一个节点。
 

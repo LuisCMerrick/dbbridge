@@ -47,8 +47,7 @@ type HTTPConfig struct {
 	TLS               TLSConfig `yaml:"tls"`
 	AllowedTransports []string  `yaml:"allowed_transports"`
 	// AllowInsecureListen permits plaintext HTTP on a non-loopback
-	// http.listen. transport.allow_insecure_remote_http is the legacy switch
-	// that implies both this and peers[].allow_insecure_http.
+	// http.listen.
 	AllowInsecureListen bool `yaml:"allow_insecure_listen"`
 }
 
@@ -91,7 +90,7 @@ type TLSClientConfig struct {
 
 func (t *TLSClientConfig) IsVerify() bool {
 	if t.Verify == nil {
-		return true // secure default per Section 6
+		return true // verify by default
 	}
 	return *t.Verify
 }
@@ -246,7 +245,6 @@ type TransportConfig struct {
 	WS                         WSConfig       `yaml:"ws"`
 	FrameSizeRaw               interface{}    `yaml:"frame_size"`
 	MaxFrameSizeRaw            interface{}    `yaml:"max_frame_size"`
-	MaxCoalesceDelayRaw        interface{}    `yaml:"max_coalesce_delay"`
 	UpMaxInflightFrames        int            `yaml:"up_max_inflight_frames"`
 	UpWindowBytesRaw           interface{}    `yaml:"up_window_bytes"`
 	ReceiptLimitPerSession     int            `yaml:"receipt_limit_per_session"`
@@ -274,14 +272,12 @@ type TransportConfig struct {
 	SSEWriteIdleTimeoutRaw     interface{}    `yaml:"sse_write_idle_timeout"`
 	BackpressureTimeoutRaw     interface{}    `yaml:"backpressure_timeout"`
 	ShutdownTimeoutRaw         interface{}    `yaml:"shutdown_timeout"`
-	AllowInsecureRemoteHTTP    bool           `yaml:"allow_insecure_remote_http"`
 	UseEnvironmentProxy        bool           `yaml:"use_environment_proxy"`
 	SQLReplay                  bool           `yaml:"sql_replay"`
 
 	// Parsed typed values
 	FrameSize               int           `yaml:"-"`
 	MaxFrameSize            int           `yaml:"-"`
-	MaxCoalesceDelay        time.Duration `yaml:"-"`
 	UpWindowBytes           int64         `yaml:"-"`
 	Heartbeat               time.Duration `yaml:"-"`
 	FailureDetectTimeout    time.Duration `yaml:"-"`

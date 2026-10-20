@@ -7,15 +7,15 @@ import (
 	"time"
 )
 
-func TestReviewStaleAttachCannotCancelNewEpoch(t *testing.T) {
-	s, _ := auditSession(t, true)
+func TestStaleAttachCannotCancelNewEpoch(t *testing.T) {
+	s, _ := testSession(t, true)
 	s.SetTransportMode("ws")
 	old, err := s.ReserveStream(1, "ws")
 	if err != nil {
 		t.Fatal(err)
 	}
 	// The old handler is delayed between ReserveStream and cancellation binding.
-	if _, err = s.Resume(auditReq("review-stale-attach"), time.Second); err != nil {
+	if _, err = s.Resume(testReq("stale-attach"), time.Second); err != nil {
 		t.Fatal(err)
 	}
 	current, err := s.ReserveStream(2, "ws")
@@ -34,8 +34,8 @@ func TestReviewStaleAttachCannotCancelNewEpoch(t *testing.T) {
 	}
 }
 
-func TestReviewStreamCancelBindingRejectsWrongStreamAndClosed(t *testing.T) {
-	s, _ := auditSession(t, true)
+func TestStreamCancelBindingRejectsWrongStreamAndClosed(t *testing.T) {
+	s, _ := testSession(t, true)
 	s.SetTransportMode("ws")
 	id, err := s.ReserveStream(1, "ws")
 	if err != nil {
@@ -57,8 +57,8 @@ func TestReviewStreamCancelBindingRejectsWrongStreamAndClosed(t *testing.T) {
 	}
 }
 
-func TestReviewStreamCancelCallbackRunsOutsideSessionLock(t *testing.T) {
-	s, _ := auditSession(t, true)
+func TestStreamCancelCallbackRunsOutsideSessionLock(t *testing.T) {
+	s, _ := testSession(t, true)
 	s.SetTransportMode("ws")
 	id, err := s.ReserveStream(1, "ws")
 	if err != nil {

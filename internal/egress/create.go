@@ -150,12 +150,7 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 	sess := session.NewSession(peer, q.TargetID, s.cfg.Node.InstanceID, conn, lim.DownBufferBytes, lim.UpWindowBytes, lim.UpMaxInflightFrames, s.cfg.Transport.ReceiptLimitPerSession, q.Recovery.Enabled)
 	sess.SetTransportMode(q.Transport.Mode)
 	sess.SetNegotiatedLimits(lim)
-	if protocol.HasFeature(r.Header, protocol.FeatureFlowLimits) {
-		// Only a peer that offered the extension gets the extra fields:
-		// older ingress decodes the response strictly.
-		lim.UpReceiptLimit, lim.DownMaxFrames = protocol.ClampAdvertisedFrames(sess.UpReceiptCapacity()), protocol.ClampAdvertisedFrames(session.MaxDownFrames)
-		sess.SetFlowHints(true)
-	}
+	lim.UpReceiptLimit, lim.DownMaxFrames = protocol.ClampAdvertisedFrames(sess.UpReceiptCapacity()), protocol.ClampAdvertisedFrames(session.MaxDownFrames)
 	sess.SetChunkSize(s.chunkSize())
 	notify := make(chan struct{}, 1)
 	sess.Configure(grace, s.cfg.Transport.SocketWriteTimeout, q.IngressInstanceID, notify)

@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// CLI-1: a second SIGTERM during the drain forces the exit.
+// A second SIGTERM during the drain forces the exit.
 func TestForceExitOnSecondSignal(t *testing.T) {
 	codes := make(chan int, 1)
 	var out bytes.Buffer

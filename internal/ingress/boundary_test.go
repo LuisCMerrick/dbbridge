@@ -99,7 +99,7 @@ func TestBoundaryCachedPrecheckInvalidatedAfterTokenChange(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
 		w.Header().Set(protocol.HeaderInstanceID, "bi")
-		if r.Header.Get("Authorization") == "Bearer audit-v2-token" {
+		if r.Header.Get("Authorization") == "Bearer test-token" {
 			w.WriteHeader(401)
 			json.NewEncoder(w).Encode(protocol.ErrorResponse{Code: protocol.ErrUnauthorized})
 			return
@@ -113,7 +113,7 @@ func TestBoundaryCachedPrecheckInvalidatedAfterTokenChange(t *testing.T) {
 		c.WriteJSON(protocol.WSHelloMessage{Type: "hello", ProtocolVersion: "1.4", NodeID: "B", InstanceID: "bi", Nonce: r.Header.Get(protocol.HeaderWSNonce), Transport: "ws"})
 	}))
 	defer ts.Close()
-	m, p := auditChooser(t, ts.URL)
+	m, p := testChooser(t, ts.URL)
 	c := m.clients[p.ID]
 	if err := m.precheck(context.Background(), p.ID, c, "B", "bi"); err == nil {
 		t.Fatal("fixture expected initial rejection")

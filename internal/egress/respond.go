@@ -75,8 +75,7 @@ func (s *Server) writeSessionError(w http.ResponseWriter, sess *session.Session,
 			writeJSONError(w, 410, code, "session terminated", true, false)
 			return
 		}
-		// The code stays DBB_SESSION_CLOSED for compatibility; the message
-		// says whether both directions had finished, so the ingress can tell
+		// The message carries the terminal category, so the ingress can tell
 		// a normal close from an abnormal one.
 		writeJSONError(w, 410, protocol.ErrSessionClosed, protocol.SessionClosedMessagePrefix+closeCategory(sess), true, false)
 		return

@@ -35,7 +35,7 @@ func ReadError(resp *http.Response, inst string) error {
 }
 
 // ErrWSUpgradeRejected reports that the WebSocket path of an endpoint is
-// unavailable while the endpoint itself answered (3.7.2): the Upgrade was
+// unavailable while the endpoint itself answered: the Upgrade was
 // refused by an intermediary or by the peer (DBB_TRANSPORT_UNSUPPORTED), or
 // the connection was dropped instead of being upgraded. In auto mode the
 // caller may fall back to SSE on the same endpoint after a fresh probe; it is

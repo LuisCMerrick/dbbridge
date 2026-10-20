@@ -8,17 +8,17 @@ import (
 	"dbbridge/internal/config"
 )
 
-// DBB-AUD-06: recovery records the carrier drop before its first candidate
+// Recovery records the carrier drop before its first candidate
 // selection. With auto, a dropped WS carrier is cooled down for the fault
 // cycle, so the same address's SSE is chosen instead of reusing the WS path
-// that just failed (requirements 3.2(4), 3.8 first bullet).
+// that just failed.
 func TestCooldownRecoveryRecordsDropBeforeSelection(t *testing.T) {
-	e, _ := fix2Setup(t, "auto", true, nil, nil, nil)
+	e, _ := dataplaneSetup(t, "auto", true, nil, nil, nil)
 	e.conn.SetDeadline(time.Now().Add(10 * time.Second))
-	if err := fixEcho2(t, e.conn, "before"); err != nil {
+	if err := testEcho2(t, e.conn, "before"); err != nil {
 		t.Fatal(err)
 	}
-	s := fix2Session(t, e.m)
+	s := testSession(t, e.m)
 	s.mu.Lock()
 	g, mode := s.g, s.mode
 	s.mu.Unlock()
@@ -27,7 +27,7 @@ func TestCooldownRecoveryRecordsDropBeforeSelection(t *testing.T) {
 	}
 	start := time.Now()
 	g.ws.Close()
-	if err := fixEcho2(t, e.conn, "after"); err != nil {
+	if err := testEcho2(t, e.conn, "after"); err != nil {
 		t.Fatalf("session did not recover: %v", err)
 	}
 	if d := time.Since(start); d > 3*time.Second {
@@ -48,11 +48,11 @@ func TestCooldownRecoveryRecordsDropBeforeSelection(t *testing.T) {
 	}
 }
 
-// DBB-AUD-06: forced ws, failover=false, one endpoint whose WS carrier is
+// Forced ws, failover=false, one endpoint whose WS carrier is
 // cooling down: the new session waits for the cooldown but never beyond
-// create_retry_timeout, then fails (requirements 3.2(7,8)).
+// create_retry_timeout, then fails.
 func TestCooldownCreateEndsAtCreateRetryTimeout(t *testing.T) {
-	e, _ := fix2Setup(t, "ws", false, func(c *config.Config) {
+	e, _ := dataplaneSetup(t, "ws", false, func(c *config.Config) {
 		c.Transport.CreateRetryTimeoutRaw = "700ms"
 		off := false
 		c.Peers[0].Failover.Enabled = &off
@@ -78,20 +78,20 @@ func TestCooldownCreateEndsAtCreateRetryTimeout(t *testing.T) {
 	}
 }
 
-// DBB-AUD-06: forced ws, one endpoint, the WS carrier drops and its 5s
+// Forced ws, one endpoint, the WS carrier drops and its 5s
 // cooldown outlasts recovery.grace: recovery waits but ends at the recovery
-// deadline instead of reusing the carrier or hanging (3.2(8), 10.2.1).
+// deadline instead of reusing the carrier or hanging.
 func TestCooldownRecoveryEndsAtGrace(t *testing.T) {
-	e, _ := fix2Setup(t, "ws", true, func(c *config.Config) {
+	e, _ := dataplaneSetup(t, "ws", true, func(c *config.Config) {
 		c.Transport.Recovery = config.RecoveryConfig{EnabledRaw: true, GraceRaw: "1s", BarrierTimeoutRaw: "500ms"}
 		off := false
 		c.Peers[0].Failover.Enabled = &off
 	}, nil, nil)
 	e.conn.SetDeadline(time.Now().Add(10 * time.Second))
-	if err := fixEcho2(t, e.conn, "x"); err != nil {
+	if err := testEcho2(t, e.conn, "x"); err != nil {
 		t.Fatal(err)
 	}
-	s := fix2Session(t, e.m)
+	s := testSession(t, e.m)
 	s.mu.Lock()
 	g := s.g
 	s.mu.Unlock()

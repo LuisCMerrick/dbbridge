@@ -53,9 +53,9 @@ func independentReview(t *testing.T, kind string) *independentReviewEnv {
 			go func() { defer sockets.Delete(c); defer c.Close(); _, _ = io.Copy(c, c) }()
 		}
 	}()
-	t.Setenv("INDEPENDENT_REVIEW_TOKEN", "isolated-review-token")
+	t.Setenv("DBB_TEST_TOKEN", "test-token")
 	b := &config.Config{Node: config.NodeConfig{ID: "B"}, HTTP: config.HTTPConfig{Enabled: true},
-		Auth:      config.AuthConfig{InboundPeers: []config.InboundPeerConfig{{ID: "A", TokenEnvs: []string{"INDEPENDENT_REVIEW_TOKEN"}, AllowedTargets: []string{"db"}, MaxSessions: 10}}},
+		Auth:      config.AuthConfig{InboundPeers: []config.InboundPeerConfig{{ID: "A", TokenEnvs: []string{"DBB_TEST_TOKEN"}, AllowedTargets: []string{"db"}, MaxSessions: 10}}},
 		Targets:   map[string]config.TargetConfig{"db": {Address: backend.Addr().String()}},
 		Transport: config.TransportConfig{HeartbeatRaw: "30ms", FailureDetectTimeoutRaw: "150ms", Recovery: config.RecoveryConfig{EnabledRaw: recovery, GraceRaw: "1200ms", BarrierTimeoutRaw: "100ms"}}}
 	if err := b.ApplyDefaultsAndValidate(); err != nil {
@@ -97,7 +97,7 @@ func independentReview(t *testing.T, kind string) *independentReviewEnv {
 			}
 		}
 		// The resumed carrier never becomes ready, whichever transport the
-		// recovery picks (a single drop no longer cools the WS carrier down).
+		// recovery picks.
 		if kind == "short_budget" && r.URL.Path == "/v1/transport/ws" && r.Header.Get(protocol.HeaderWSPurpose) == "session" && r.Header.Get(protocol.HeaderWSEpoch) != "1" {
 			select {
 			case <-r.Context().Done():
@@ -183,7 +183,7 @@ func independentReview(t *testing.T, kind string) *independentReviewEnv {
 		base.ServeHTTP(w, r)
 	}))
 	a := &config.Config{Node: config.NodeConfig{ID: "A"},
-		Peers:     []config.PeerConfig{{ID: "B", ExpectedNodeID: "B", CredentialRef: "B", TokenEnv: "INDEPENDENT_REVIEW_TOKEN", Endpoints: []config.EndpointConfig{{ID: "primary", URL: gateway.URL}}}},
+		Peers:     []config.PeerConfig{{ID: "B", ExpectedNodeID: "B", CredentialRef: "B", TokenEnv: "DBB_TEST_TOKEN", Endpoints: []config.EndpointConfig{{ID: "primary", URL: gateway.URL}}}},
 		Listeners: []config.ListenerConfig{{ID: "local", Listen: "127.0.0.1:0", Peer: "B", Target: "db"}},
 		Transport: config.TransportConfig{Protocol: "auto", HeartbeatRaw: "30ms", FailureDetectTimeoutRaw: "150ms", AckMaxDelayRaw: "20ms", ControlRequestTimeoutRaw: "250ms", BackpressureTimeoutRaw: "3s", Recovery: config.RecoveryConfig{EnabledRaw: recovery, GraceRaw: "1200ms", BarrierTimeoutRaw: "100ms"}}}
 	if err := a.ApplyDefaultsAndValidate(); err != nil {
@@ -212,7 +212,7 @@ func independentReview(t *testing.T, kind string) *independentReviewEnv {
 	return e
 }
 
-func TestReviewMalformedInitialReadyMustTerminate(t *testing.T) {
+func TestMalformedInitialReadyMustTerminate(t *testing.T) {
 	e := independentReview(t, "malformed_ready")
 	_ = e.c.SetDeadline(time.Now().Add(3 * time.Second))
 	p := []byte("must not survive an invalid protocol message")
@@ -240,7 +240,7 @@ func TestReviewMalformedInitialReadyMustTerminate(t *testing.T) {
 	}
 }
 
-func TestReviewUpstreamWSBlackholeMustTriggerRecovery(t *testing.T) {
+func TestUpstreamWSBlackholeMustTriggerRecovery(t *testing.T) {
 	e := independentReview(t, "drop_up")
 	_, _ = e.c.Write([]byte("pending upstream frame"))
 	deadline := time.Now().Add(time.Second)
@@ -282,7 +282,7 @@ func TestReviewUpstreamWSBlackholeMustTriggerRecovery(t *testing.T) {
 	}
 }
 
-func TestReviewResumeRemainingMustTightenDeadline(t *testing.T) {
+func TestResumeRemainingMustTightenDeadline(t *testing.T) {
 	e := independentReview(t, "short_budget")
 	_ = e.c.SetDeadline(time.Now().Add(3 * time.Second))
 	_, _ = e.c.Write([]byte("before"))
@@ -322,7 +322,7 @@ func TestReviewResumeRemainingMustTightenDeadline(t *testing.T) {
 	}
 }
 
-func TestReviewUpstreamBlackholeWithoutRecoveryMustClose(t *testing.T) {
+func TestUpstreamBlackholeWithoutRecoveryMustClose(t *testing.T) {
 	e := independentReview(t, "drop_up_no_recovery")
 	_, _ = e.c.Write([]byte("unconfirmed bytes"))
 	until := time.Now().Add(time.Second)
@@ -342,7 +342,7 @@ func TestReviewUpstreamBlackholeWithoutRecoveryMustClose(t *testing.T) {
 	}
 }
 
-func TestReviewUpstreamDetectionAllowsHealthyWaiting(t *testing.T) {
+func TestUpstreamDetectionAllowsHealthyWaiting(t *testing.T) {
 	for _, kind := range []string{"idle", "queued", "backend-backpressure", "ack-progress"} {
 		t.Run(kind, func(t *testing.T) {
 			var calls atomic.Int64
@@ -418,11 +418,11 @@ func TestReviewUpstreamDetectionAllowsHealthyWaiting(t *testing.T) {
 	}
 }
 
-func TestReviewPrecheckQuotaRemainsRetryableAndUncached(t *testing.T) {
+func TestPrecheckQuotaRemainsRetryableAndUncached(t *testing.T) {
 	var checks atomic.Int64
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/peer/probe" {
-			auditProbeResponse(w, r, true)
+			testProbeResponse(w, r, true)
 			return
 		}
 		if checks.Add(1) == 1 {
@@ -440,7 +440,7 @@ func TestReviewPrecheckQuotaRemainsRetryableAndUncached(t *testing.T) {
 		}
 	}))
 	defer ts.Close()
-	m, p := auditChooser(t, ts.URL)
+	m, p := testChooser(t, ts.URL)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	if _, _, _, err := m.choose(ctx, p, "", "auto", true); !safeRetry(err) {

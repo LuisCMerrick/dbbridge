@@ -43,7 +43,7 @@ type selection struct {
 // The returned probe response is the one the selection was based on, so callers
 // reuse it instead of probing the chosen endpoint a second time.
 //
-// A failure cooldown is never bypassed (requirements 3.2(4), 3.8): the pass
+// A failure cooldown is never bypassed: the pass
 // skips cooled-down addresses and carriers. When every remaining candidate is
 // cooling down, the selection waits (with jitter) until the earliest one
 // becomes eligible or ctx, the create retry / recovery deadline, ends, and
@@ -193,7 +193,7 @@ func (m *IngressManager) choosePass(ctx context.Context, p config.PeerConfig, ow
 			} else {
 				switch classifyPrecheck(ctx, checkDone, e) {
 				case precheckUnsafe:
-					// 3.7.3(1,3): TLS, identity, subprotocol, version or illegal
+					// TLS, identity, subprotocol, version or illegal
 					// hello data isolates this candidate; never an SSE fallback here.
 					mgr.RecordFailure(ep.ID, true)
 					unsafe = e
@@ -202,7 +202,7 @@ func (m *IngressManager) choosePass(ctx context.Context, p config.PeerConfig, ow
 					var remote *transport.RemoteError
 					if errors.As(e, &remote) && remote.Trusted {
 						// A trusted DBBridge 401/403 is a verdict on this node's
-						// credentials, final for the session (3.7.3(2)).
+						// credentials, final for the session.
 						return nil, nil, "", nil, false, e
 					}
 					// A raw 401 on the authenticated Upgrade is not tolerated by
@@ -222,7 +222,7 @@ func (m *IngressManager) choosePass(ctx context.Context, p config.PeerConfig, ow
 				// WS is unavailable on this endpoint for now (an upgrade
 				// refusal, any ordinary HTTP answer of a gateway, proxy or WAF,
 				// or a transport-level failure of the WS path). Only the
-				// (endpoint, ws) pair cools down (3.8); the address and its SSE
+				// (endpoint, ws) pair cools down; the address and its SSE
 				// carrier stay eligible.
 				mgr.RecordTransportFailure(ep.ID, "ws")
 				if policy == "ws" || !contains(pr.Transports, "http-sse") {

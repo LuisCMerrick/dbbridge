@@ -15,7 +15,7 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-func TestAuditV2WSSAfterHTTP2Probe(t *testing.T) {
+func TestWSSAfterHTTP2Probe(t *testing.T) {
 	var mu sync.Mutex
 	observed := ""
 	ts := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -62,7 +62,7 @@ func TestAuditV2WSSAfterHTTP2Probe(t *testing.T) {
 	}
 }
 
-func TestAuditV2WSHelloAndReadyHonorCallerDeadline(t *testing.T) {
+func TestWSHelloAndReadyHonorCallerDeadline(t *testing.T) {
 	for _, kind := range []string{"precheck", "session"} {
 		t.Run(kind, func(t *testing.T) {
 			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

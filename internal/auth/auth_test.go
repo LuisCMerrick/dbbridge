@@ -58,7 +58,7 @@ func TestDualTokenRotation(t *testing.T) {
 	}
 }
 
-func TestAuditDisabledInboundPeer(t *testing.T) {
+func TestDisabledInboundPeer(t *testing.T) {
 	cfg := &config.Config{
 		Auth: config.AuthConfig{
 			InboundPeers: []config.InboundPeerConfig{
@@ -78,7 +78,7 @@ func TestAuditDisabledInboundPeer(t *testing.T) {
 	}
 }
 
-func TestAuditHotReloadDeletesRemovedPeer(t *testing.T) {
+func TestHotReloadDeletesRemovedPeer(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("RELOAD_TOKEN_1", "token-1")
 	t.Setenv("RELOAD_TOKEN_2", "token-2")

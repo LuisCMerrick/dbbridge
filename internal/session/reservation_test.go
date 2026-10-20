@@ -11,7 +11,7 @@ import (
 )
 
 func TestReservedUpFrameOwnership(t *testing.T) {
-	s, _ := auditSession(t, false)
+	s, _ := testSession(t, false)
 	raw := resource.New(8192)
 	r := NewRegistry(8192, 8192)
 	r.SetResources(raw, nil, time.Minute)
@@ -65,7 +65,7 @@ func TestVariableCreateMetadataReleased(t *testing.T) {
 				t.Fatal(status)
 			}
 			r.FailCreate(key, protocol.ErrTargetForbidden, "creation refused")
-			if metadata.Used() < int64(len(key)+len(target)+createRecordCost) { // SES-1: compact tombstone reservation
+			if metadata.Used() < int64(len(key)+len(target)+createRecordCost) { // Compact tombstone reservation.
 				t.Fatalf("undercharged: %d", metadata.Used())
 			}
 			// Repeating a failure keeps one record and one reservation.

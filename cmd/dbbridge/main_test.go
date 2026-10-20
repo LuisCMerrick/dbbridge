@@ -13,7 +13,7 @@ import (
 	"dbbridge/internal/service"
 )
 
-func TestGenerateAndInstallAliasesPreview(t *testing.T) {
+func TestGenerateAndInstallPreview(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "peer-a.yaml")
 	var output, diagnostics bytes.Buffer
@@ -28,11 +28,8 @@ func TestGenerateAndInstallAliasesPreview(t *testing.T) {
 		t.Fatal("generator printed secret")
 	}
 	for _, args := range [][]string{
-		{"--instal", "-c", path, "--dry-run"},
-		{"--install", "-c", path, "--dry-run"},
 		{"install", "-c", path, "--dry-run"},
-		{"run", "-c", path, "--instal", "--dry-run"},
-		{"--config", path, "--instal", "--dry-run"},
+		{"install", "--config", path, "--dry-run"},
 	} {
 		output.Reset()
 		diagnostics.Reset()
@@ -54,10 +51,11 @@ func TestGenerateAndInstallAliasesPreview(t *testing.T) {
 		t.Fatal(err)
 	}
 }
-func TestCLIRejectsAmbiguousOrUnsupportedArguments(t *testing.T) {
+func TestRejectsAmbiguousOrUnsupportedArguments(t *testing.T) {
 	for _, args := range [][]string{
 		{"gen-config", "--mode", "invalid"}, {"gen-config", "--role", "egress"}, {"run"}, {"install"}, {"version", "extra"}, {"gen-config", "extra"},
-		{"uninstall", "--service-name", "../ssh", "--dry-run"}, {"run", "-c", "unused", "--dry-run"}, {"check-config", "-c", "unused", "--instal"},
+		{"uninstall", "--service-name", "../ssh", "--dry-run"}, {"run", "-c", "unused", "--dry-run"}, {"check-config", "-c", "unused", "--install"},
+		{"--config", "unused"}, {"--install", "-c", "unused", "--dry-run"}, {"run", "-c", "unused", "--start"},
 		{"run", "-c", "unused", "--log-format", "invalid"}, {"unknown"},
 	} {
 		var out bytes.Buffer
@@ -65,7 +63,7 @@ func TestCLIRejectsAmbiguousOrUnsupportedArguments(t *testing.T) {
 			t.Fatalf("accepted args %v", args)
 		}
 	}
-	// CLI-4: uninstall --dry-run checks that the service exists and is
+	// Uninstall --dry-run checks that the service exists and is
 	// managed by DBBridge instead of always reporting success.
 	if runtime.GOOS == "linux" {
 		var out bytes.Buffer

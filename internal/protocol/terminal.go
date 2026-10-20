@@ -2,7 +2,7 @@ package protocol
 
 // SessionClosedNormalMessage is the message of a 410 DBB_SESSION_CLOSED
 // answer for a session that ended normally (upstream FIN applied, downstream
-// FIN acknowledged). The code stays DBB_SESSION_CLOSED for compatibility; the
+// FIN acknowledged). The
 // ingress reads the message to finish as closed_normal instead of failing.
 // Other closes use "session terminated: <category>".
 const SessionClosedNormalMessage = "session terminated: normal"

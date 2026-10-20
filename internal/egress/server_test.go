@@ -209,7 +209,7 @@ func TestCreateSessionValidation(t *testing.T) {
 	}
 }
 
-func TestAuditControlBodyLimit(t *testing.T) {
+func TestControlBodyLimit(t *testing.T) {
 	srv, _, token := setupTestServer(t)
 
 	// Send probe request with body > 16 KiB (e.g. 20,000 bytes)
@@ -224,7 +224,7 @@ func TestAuditControlBodyLimit(t *testing.T) {
 	}
 }
 
-func TestAuditInvalidCIDRMustFailClosed(t *testing.T) {
+func TestInvalidCIDRMustFailClosed(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("failed to listen on dummy target: %v", err)

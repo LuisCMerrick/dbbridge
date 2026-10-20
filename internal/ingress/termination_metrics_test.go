@@ -59,7 +59,7 @@ func TestTerminationCountersByRecoveryMode(t *testing.T) {
 
 // The recovery window starts at the fault decision, not when recover runs.
 func TestRecoveryDeadlineAnchoredAtFault(t *testing.T) {
-	m, p := auditChooser(t, "http://127.0.0.1:1")
+	m, p := testChooser(t, "http://127.0.0.1:1")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	fault := time.Now().Add(-1500 * time.Millisecond)
@@ -88,7 +88,7 @@ func TestReceiveReleasesUnprocessedEarlyMessages(t *testing.T) {
 }
 
 func TestBoundSessionsCountOnlyActiveCarriers(t *testing.T) {
-	m, p := auditChooser(t, "http://127.0.0.1:1")
+	m, p := testChooser(t, "http://127.0.0.1:1")
 	ep := m.linkManagers[p.ID].GetEndpoints()[0]
 	active := &ingressSession{p: p, g: &generation{endpoint: ep, mode: "ws", active: true}}
 	recovering := &ingressSession{p: p, g: &generation{endpoint: ep, mode: "ws"}, deadline: time.Now().Add(time.Minute)}
@@ -130,7 +130,7 @@ func TestFallbackCountedOncePerCreatedSession(t *testing.T) {
 		}
 		return false
 	}
-	e, _ := fix2Setup(t, "auto", false, nil, nil, hook)
+	e, _ := dataplaneSetup(t, "auto", false, nil, nil, hook)
 	before := fallbackEvents()
 	if _, _, mode, err := e.m.choose(context.Background(), e.m.cfg.Peers[0], "", "auto", true); err != nil || mode != "http-sse" {
 		t.Fatalf("selection: mode=%q err=%v", mode, err)
@@ -147,7 +147,7 @@ func TestFallbackCountedOncePerCreatedSession(t *testing.T) {
 	}
 	defer c.Close()
 	c.SetDeadline(time.Now().Add(5 * time.Second))
-	if err := fixEcho2(t, c, "q"); err != nil {
+	if err := testEcho2(t, c, "q"); err != nil {
 		t.Fatal(err)
 	}
 	if got := fallbackEvents(); got != before+1 {

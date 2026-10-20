@@ -47,7 +47,7 @@ DBBridge 对协议完全透明：逐字节原样转发，从不解析或改写 S
 | Linux amd64 / arm64 | ✓ | systemd |
 | Windows amd64 | ✓ | Windows 服务（内置），或 WinSW |
 
-从源码构建需要 Go 1.27.2 或更新版本。节点使用协议 1.4；任意两个支持协议 1.4 的版本之间都能互通。
+从源码构建需要 Go 1.27.2 或更新版本。节点使用 DBBridge 协议 1.4。
 
 ## 快速开始
 
@@ -81,7 +81,7 @@ sudo dbbridge install -c /etc/dbbridge/peer-a.yaml --service-user dbbridge --sta
 | [安全](docs/security.zh-CN.md) | 加固、令牌轮换、紧急吊销、ACL、admin 暴露、服务账户 |
 | [运维](docs/operations.zh-CN.md) | CLI、退出码、信号、重载、admin 端点、指标、日志、错误码、容量、故障排查 |
 | [示例](docs/examples.zh-CN.md) | MySQL、SQL Server、用 `gen-config` 生成的双向节点对、使用 TLS 的生产节点对 |
-| [CHANGELOG](CHANGELOG.zh-CN.md) | 各版本变更与升级说明 |
+| [CHANGELOG](CHANGELOG.zh-CN.md) | 版本说明 |
 
 样例配置位于 `configs/`，服务定义位于 `deploy/`。
 

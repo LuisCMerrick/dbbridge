@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-func TestV2IdleConnectionCannotStarveAnotherEndpoint(t *testing.T) {
+func TestIdleConnectionCannotStarveAnotherEndpoint(t *testing.T) {
 	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var q protocol.ProbeRequest
 		json.NewDecoder(r.Body).Decode(&q)
@@ -53,7 +53,7 @@ func TestV2IdleConnectionCannotStarveAnotherEndpoint(t *testing.T) {
 	}
 }
 
-func TestV2DataConnectionSaturationPreservesControl(t *testing.T) {
+func TestDataConnectionSaturationPreservesControl(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/peer/probe" {
 			var q protocol.ProbeRequest

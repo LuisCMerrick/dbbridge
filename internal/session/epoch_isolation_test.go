@@ -6,8 +6,8 @@ import (
 	"time"
 )
 
-func TestAuditV2OldHeartbeatClearsNewRecoveryDeadline(t *testing.T) {
-	s, _ := auditSession(t, true)
+func TestOldHeartbeatClearsNewRecoveryDeadline(t *testing.T) {
+	s, _ := testSession(t, true)
 	s.SetTransportMode("ws")
 	id, e := s.ReserveStream(1, "ws")
 	if e != nil {
@@ -18,7 +18,7 @@ func TestAuditV2OldHeartbeatClearsNewRecoveryDeadline(t *testing.T) {
 	}
 	nonce := s.Heartbeat()
 	s.Suspend(200*time.Millisecond, nil)
-	r, e := s.Resume(auditReq("r2"), 20*time.Millisecond)
+	r, e := s.Resume(testReq("r2"), 20*time.Millisecond)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -37,11 +37,11 @@ func TestAuditV2OldHeartbeatClearsNewRecoveryDeadline(t *testing.T) {
 		t.Fatalf("old epoch heartbeat nonce cleared recovery deadline in epoch=%s before any new-channel ping proof", r.Epoch)
 	}
 }
-func TestAuditV2ResumeFINCannotContradictUpNext(t *testing.T) {
-	s, _ := auditSession(t, true)
+func TestResumeFINCannotContradictUpNext(t *testing.T) {
+	s, _ := testSession(t, true)
 	s.SetTransportMode("ws")
 	s.Suspend(time.Second, nil)
-	req := auditReq("r-fin")
+	req := testReq("r-fin")
 	v := "100"
 	req.UpFIN = protocol.DirectionFIN{Seen: true, FinalOffset: &v}
 	r, e := s.Resume(req, 20*time.Millisecond)

@@ -27,7 +27,7 @@ import (
 // (close frame, abnormal close, framing error) after the 101. TLS
 // verification failures become ErrProtocol, and so do, after the 101, an
 // oversized message or a WebSocket framing violation (illegal protocol data,
-// sections 3.7.3(3) and 5.11 DBB_WS_PROTOCOL_ERROR). Context cancellation or deadline
+// DBB_WS_PROTOCOL_ERROR). Context cancellation or deadline
 // (checked against ctx, the precheck context) is returned wrapping ctx.Err()
 // so errors.Is(err, context.Canceled/DeadlineExceeded) holds; a wait for a
 // local connection slot keeps ErrLocalConnBudget. Anything else
@@ -65,7 +65,7 @@ func wsUnavailable(ctx context.Context, err error, upgraded bool) error {
 		var closed *websocket.CloseError
 		if errors.As(err, &closed) {
 			// The far side closed (or the link dropped, 1006) before a hello:
-			// like a reset, fallback is allowed after a fresh probe (3.7.2).
+			// like a reset, fallback is allowed after a fresh probe.
 			return fmt.Errorf("%w: after upgrade: %v", ErrWSUpgradeRejected, err)
 		}
 		if errors.Is(err, websocket.ErrReadLimit) || strings.HasPrefix(err.Error(), "websocket: ") {
@@ -103,7 +103,7 @@ func buildWSURL(endpointURL string) string {
 	return "ws://" + base + "/v1/transport/ws"
 }
 
-// PrecheckWS performs an authenticated, session-less WS precheck per Section 5.1.2.
+// PrecheckWS performs an authenticated, session-less WS precheck.
 // It tests whether the endpoint and intermediate proxies correctly support WebSocket Upgrade.
 func (c *TripleTransportClient) PrecheckWS(ctx context.Context, expectedNodeID, expectedInstanceID string) error {
 	ctx, cancel := context.WithTimeout(ctx, c.wsHandshakeTimeout())
@@ -138,7 +138,7 @@ func (c *TripleTransportClient) PrecheckWS(ctx context.Context, expectedNodeID, 
 			}
 			// Any other non-101 answer without a trusted DBBridge body is an
 			// ordinary response from the path (gateway, proxy, WAF, redirect):
-			// WS is unavailable there and auto may fall back to SSE (3.7.2).
+			// WS is unavailable there and auto may fall back to SSE.
 			return &UpgradeRefusedError{Status: resp.StatusCode}
 		}
 		return wsUnavailable(ctx, err, false)
@@ -148,7 +148,7 @@ func (c *TripleTransportClient) PrecheckWS(ctx context.Context, expectedNodeID, 
 	defer stopCancel()
 	conn.SetReadLimit(16 << 10)
 
-	// Sections 3.7.3(1,3), 5.1.2, after a 101 every subprotocol,
+	// After a 101 every subprotocol,
 	// version, structure or content error of the hello is a protocol error
 	// that excludes this candidate. It is never ErrWSUpgradeRejected, so auto
 	// cannot fall back to SSE on the same endpoint to tolerate it.
@@ -199,11 +199,11 @@ func (c *TripleTransportClient) PrecheckWS(ctx context.Context, expectedNodeID, 
 	return nil
 }
 
-// DialWSSession establishes a genuine WebSocket data plane session per Section 5.4.1.
+// DialWSSession establishes a genuine WebSocket data plane session.
 //
 // ws.handshake_timeout bounds only the Upgrade (TCP, TLS, response headers).
 // The first ready message is read under ctx, the caller's attach budget
-// (5.4.3: control_request_timeout covers handshake, ready and the reverse
+// (control_request_timeout covers handshake, ready and the reverse
 // confirmation); without a ctx deadline control_request_timeout applies.
 // When that budget runs out the error wraps context.DeadlineExceeded.
 func (c *TripleTransportClient) DialWSSession(
@@ -264,7 +264,7 @@ func (c *TripleTransportClient) DialWSSession(
 	}
 
 	conn.SetReadLimit(16 << 10)
-	// Read initial ready event text message per Section 5.4.3
+	// Read the initial ready text message.
 	deadline, _ := ctx.Deadline()
 	_ = conn.SetReadDeadline(deadline)
 	msgType, data, err := conn.ReadMessage()

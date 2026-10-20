@@ -15,8 +15,8 @@ import (
 	"time"
 )
 
-func TestAudit20261017CreateRequiresRecoveryObject(t *testing.T) {
-	srv, _, _, dials := reviewServer(t)
+func TestCreateRequiresRecoveryObject(t *testing.T) {
+	srv, _, _, dials := boundaryServer(t)
 	q := protocol.CreateSessionRequest{ProtocolVersion: "1.4", Transport: protocol.TransportMode{Mode: "ws"}, CreateRequestID: "missing-recovery", IngressInstanceID: "ai", TargetID: "db", Limits: protocol.SessionLimits{MaxFrameSize: 1024, UpMaxInflightFrames: 8, UpWindowBytes: 1024, DownBufferBytes: 1024}}
 	encoded, _ := json.Marshal(q)
 	var object map[string]any
@@ -34,8 +34,8 @@ func TestAudit20261017CreateRequiresRecoveryObject(t *testing.T) {
 	}
 }
 
-func TestAudit20261017RejectedCreateMetadataBudget(t *testing.T) {
-	srv, cfg, _, _ := reviewServer(t)
+func TestRejectedCreateMetadataBudget(t *testing.T) {
+	srv, cfg, _, _ := boundaryServer(t)
 	const count = 32
 	target := strings.Repeat("x", 12<<10)
 	for i := 0; i < count; i++ {
@@ -58,17 +58,17 @@ func TestAudit20261017RejectedCreateMetadataBudget(t *testing.T) {
 			t.Fatal("cached rejection changed status or charged metadata twice")
 		}
 	}
-	// EGR-1: a forbidden target is refused before the idempotency table is
+	// A forbidden target is refused before the idempotency table is
 	// touched, so refused creates retain no record and no metadata at all.
 	if used := cfg.Resources.Metadata.Used(); used != 0 {
 		t.Fatalf("refused creates retained %d bytes of metadata", used)
 	}
 }
 
-func TestAudit20261017WSWaitsForPayloadBudget(t *testing.T) {
-	srv, cfg, reg, _ := reviewServer(t)
+func TestWSWaitsForPayloadBudget(t *testing.T) {
+	srv, cfg, reg, _ := boundaryServer(t)
 	cfg.Transport.UnattachedTimeout = time.Second
-	created := reviewCreate(t, srv, "payload-pressure", "bi", false)
+	created := boundaryCreate(t, srv, "payload-pressure", "bi", false)
 	if created.Code != 201 {
 		t.Fatal(created.Body.String())
 	}
@@ -90,7 +90,7 @@ func TestAudit20261017WSWaitsForPayloadBudget(t *testing.T) {
 	}
 	var ready protocol.ReadyEventData
 	json.Unmarshal(readyBody, &ready)
-	if _, err = sess.Ack(1, ready.StreamID, protocol.AckRequest{ReadyReceived: true, DownDeliveredOffset: "0", UpConfirmedOffset: "0", ProbeID: "audit-probe"}); err != nil {
+	if _, err = sess.Ack(1, ready.StreamID, protocol.AckRequest{ReadyReceived: true, DownDeliveredOffset: "0", UpConfirmedOffset: "0", ProbeID: "test-credential"}); err != nil {
 		t.Fatal(err)
 	}
 	// The backend reader holds its pre-read reservation. Consume all remaining
@@ -157,8 +157,8 @@ func TestAudit20261017WSWaitsForPayloadBudget(t *testing.T) {
 	}
 }
 
-func TestAudit20261017DownstreamAdaptiveFrames(t *testing.T) {
-	srv, cfg, reg, _ := reviewServer(t)
+func TestDownstreamAdaptiveFrames(t *testing.T) {
+	srv, cfg, reg, _ := boundaryServer(t)
 	cfg.Transport.FrameSize = 32 << 10
 	local, peer := net.Pipe()
 	defer peer.Close()

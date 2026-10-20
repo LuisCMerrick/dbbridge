@@ -6,7 +6,7 @@ import (
 )
 
 func TestDownReadReservationFollowsAllocation(t *testing.T) {
-	s, _ := auditSession(t, false)
+	s, _ := testSession(t, false)
 	const allocation = 512
 	payload := resource.New(allocation)
 	r := NewRegistry(1<<20, 4<<20)
@@ -29,7 +29,7 @@ func TestDownReadReservationFollowsAllocation(t *testing.T) {
 	if _, err := s.FinishDownRead(buf[:1]); err != nil {
 		t.Fatal(err)
 	}
-	// X-DP-3: a very short read is retained as a compact copy, so the charge
+	// A very short read is retained as a compact copy, so the charge
 	// follows the retained allocation (1 byte), not the discarded read buffer.
 	if s.BufferSize() != 1 || payload.Used() != 1 {
 		t.Fatalf("short read charge does not follow the retained allocation: retained=%d payload=%d", s.BufferSize(), payload.Used())

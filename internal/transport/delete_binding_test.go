@@ -9,14 +9,14 @@ import (
 	"testing"
 )
 
-func TestAudit20261018DeleteRejectsUnboundGatewaySuccess(t *testing.T) {
+func TestDeleteRejectsUnboundGatewaySuccess(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
 		w.Header().Set("X-DBB-Instance-ID", "wrong-instance")
 		_, _ = w.Write([]byte("<html>gateway default success page</html>"))
 	}))
 	defer ts.Close()
-	c := auditClient(ts.URL)
+	c := testHTTPClient(ts.URL)
 	defer c.Close()
 	err := c.DeleteSession(context.Background(), "original-session", "session-token", "original-instance", 7)
 	t.Logf("DELETE with wrong response instance and HTML body => error=%v", err)
@@ -51,7 +51,7 @@ func TestDeleteResponseRequiresOriginalBinding(t *testing.T) {
 				}
 			}))
 			defer ts.Close()
-			c := auditClient(ts.URL)
+			c := testHTTPClient(ts.URL)
 			defer c.Close()
 			err := c.DeleteSession(context.Background(), "sid", "secret", "bi", 7)
 			if (err == nil) != (kind == "valid") {
@@ -61,15 +61,16 @@ func TestDeleteResponseRequiresOriginalBinding(t *testing.T) {
 	}
 }
 
-// The normative 1.4 document, section 5.8, names the response's upstream FIN
-// flag "received"; requests use "seen". Same-version self-tests hide this drift.
-func TestAudit20261018ResumeResponseMatchesDocumentedFINSchema(t *testing.T) {
+// A resume response names its upstream FIN flag "received"; requests use
+// "seen". A self-test between two nodes of this code would not notice a
+// mismatch, so the response is checked against the protocol schema.
+func TestResumeResponseMatchesDocumentedFINSchema(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"session_id":"sid","instance_id":"bi","resume_request_id":"request","epoch":"2","transport":{"mode":"ws"},"up_written_offset":"0","ack_up_offset":"0","down_replay_from":"0","down_produced_offset":"0","down_retained_from":"0","up_fin":{"received":false,"final_offset":null,"applied":false},"down_fin":{"seen":false,"final_offset":null,"acked":false},"resume_remaining_ms":1000}`))
 	}))
 	defer ts.Close()
-	c := auditClient(ts.URL)
+	c := testHTTPClient(ts.URL)
 	defer c.Close()
 	_, err := c.ResumeSession(context.Background(), "sid", "secret", "bi", protocol.ResumeRequest{ExpectedEpoch: "1", ResumeRequestID: "request", Transport: protocol.TransportMode{Mode: "ws"}, UpNextOffset: "0", KnownUpAckOffset: "0", DownDeliveredOffset: "0"})
 	t.Logf("section 5.8 up_fin.received response => error=%v", err)

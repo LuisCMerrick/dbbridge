@@ -8,12 +8,12 @@ import (
 )
 
 // onAuthReload closes the sessions whose identity was disabled or removed, or
-// whose Target ACL no longer allows them (FR-06(6), 7.4(4,5)). A live session
+// whose Target ACL no longer allows them. A live session
 // is bound to its stable peer identity, not to the bearer token text that
 // created or last controlled it: removing an old Peer Token only rejects the
 // later requests that still present it (every create, control, WS attach,
 // POST and resume request is authenticated against the current snapshot), and
-// never destroys an authorized database session by itself (7.4(3,4)).
+// never destroys an authorized database session by itself.
 // Holding s.mu serializes the sweep with session creation, which checks
 // authorization under the same lock, so a create either sees the new snapshot
 // or is registered before the sweep runs.
@@ -35,7 +35,7 @@ func (s *Server) onAuthReload(a *auth.Authenticator) {
 
 // bindCred checks that the credential that authenticated this request is
 // still valid for peer in the current snapshot; a request presenting a
-// removed token is refused (FR-06(9)). It never terminates a session: a live
+// removed token is refused. It never terminates a session: a live
 // session is bound to its peer identity, not to the token text.
 func (s *Server) bindCred(peer string, d [32]byte) bool {
 	return s.auth.PeerTokenValid(peer, d)

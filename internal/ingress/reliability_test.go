@@ -38,7 +38,7 @@ func TestRecoveryDeadlineClosesBlockedLocalSocket(t *testing.T) {
 func TestResourceLeasesReleasedOnClose(t *testing.T) {
 	for _, mode := range []string{"ws", "http-sse"} {
 		t.Run(mode, func(t *testing.T) {
-			e := reviewIngress(t, mode, "")
+			e := e2eIngress(t, mode, "")
 			e.conn.SetDeadline(time.Now().Add(2 * time.Second))
 			payload := bytes.Repeat([]byte{3, 8, 255}, 64000)
 			done := make(chan error, 1)
@@ -73,7 +73,7 @@ func TestResourceLeasesReleasedOnClose(t *testing.T) {
 func TestCarrierAndPathRecovery(t *testing.T) {
 	for _, kind := range []string{"ws_to_sse", "sse_to_ws", "drop_resume", "path_failover"} {
 		t.Run(kind, func(t *testing.T) {
-			e := reviewIngress(t, "auto", kind)
+			e := e2eIngress(t, "auto", kind)
 			e.conn.SetDeadline(time.Now().Add(6 * time.Second))
 			e.conn.Write([]byte("before"))
 			b := make([]byte, 6)
@@ -113,7 +113,7 @@ func TestHalfCloseBothOrders(t *testing.T) {
 	for _, mode := range []string{"ws", "http-sse"} {
 		for _, kind := range []string{"", "down_fin_first"} {
 			t.Run(mode+"/"+kind, func(t *testing.T) {
-				e := reviewIngress(t, mode, kind)
+				e := e2eIngress(t, mode, kind)
 				e.conn.SetDeadline(time.Now().Add(3 * time.Second))
 				if kind == "down_fin_first" {
 					_, err := e.conn.Read(make([]byte, 1))
@@ -158,7 +158,7 @@ func TestHalfCloseBothOrders(t *testing.T) {
 func TestLargeBidirectionalByteStream(t *testing.T) {
 	for _, mode := range []string{"ws", "http-sse"} {
 		t.Run(mode, func(t *testing.T) {
-			e := reviewIngress(t, mode, "large_stream")
+			e := e2eIngress(t, mode, "large_stream")
 			e.conn.SetDeadline(time.Now().Add(15 * time.Second))
 			block := bytes.Repeat([]byte{0, 1, 255, 127, 0, 9, 31, 4}, 8192)
 			const blocks = 800
@@ -189,7 +189,7 @@ func TestLargeBidirectionalByteStream(t *testing.T) {
 	}
 }
 func TestTwoHundredSessionsClose(t *testing.T) {
-	e := reviewIngress(t, "ws", "mass_close")
+	e := e2eIngress(t, "ws", "mass_close")
 	clients := []net.Conn{e.conn}
 	for i := 1; i < 200; i++ {
 		c, err := net.Dial("tcp", e.manager.listeners[0].Addr().String())

@@ -29,7 +29,7 @@ func cleanupFailoverEnv(t *testing.T) (*IngressManager, *ingressSession, *atomic
 	backup := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/peer/probe" {
 			probes.Add(1)
-			auditProbeResponse(w, r, true)
+			testProbeResponse(w, r, true)
 			return
 		}
 		if r.Method == http.MethodDelete {
@@ -41,7 +41,7 @@ func cleanupFailoverEnv(t *testing.T) (*IngressManager, *ingressSession, *atomic
 		w.WriteHeader(404)
 	}))
 	t.Cleanup(backup.Close)
-	m, p := auditChooser(t, primary.URL, backup.URL)
+	m, p := testChooser(t, primary.URL, backup.URL)
 	local, remote := net.Pipe()
 	t.Cleanup(func() { remote.Close() })
 	ctx, cancel := context.WithCancel(context.Background())
@@ -96,7 +96,7 @@ func TestShutdownCleanupOfRecoveringSessionTriesBackupFirst(t *testing.T) {
 // (as a WS close behind a blocked writer does), and twenty of them must
 // still finish well inside the shutdown budget.
 func TestCloseContextStopsSessionsConcurrently(t *testing.T) {
-	m, _ := auditChooser(t, "http://127.0.0.1:1")
+	m, _ := testChooser(t, "http://127.0.0.1:1")
 	var stopped atomic.Int64
 	for i := 0; i < 20; i++ {
 		m.activeConns.Store(i, &activeConnEntry{cancel: func() {}, closeFn: func() { time.Sleep(150 * time.Millisecond); stopped.Add(1) }})
@@ -115,7 +115,7 @@ func TestCloseContextStopsSessionsConcurrently(t *testing.T) {
 
 // The shutdown deadline bounds the stop phase too.
 func TestCloseContextDeadlineBoundsBlockedStops(t *testing.T) {
-	m, _ := auditChooser(t, "http://127.0.0.1:1")
+	m, _ := testChooser(t, "http://127.0.0.1:1")
 	release := make(chan struct{})
 	defer close(release)
 	m.activeConns.Store("blocked", &activeConnEntry{cancel: func() {}, closeFn: func() { <-release }})

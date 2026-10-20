@@ -69,11 +69,11 @@ func (t *tombstone) view() *Session {
 
 // createEntryLimitLocked bounds the create idempotency table. With a metadata
 // budget the budget is the real bound, so the table may hold as many records as
-// it can pay for; without one the historical fixed cap applies.
+// it can pay for; without one a fixed cap applies.
 //
 // The configured idempotency_tombstone_ttl (>= 10min) is the single retention
 // guarantee for every terminal outcome: normal close, abnormal close and create
-// failure (5.3(7), 5.10). There is deliberately no shorter normal-close TTL:
+// failure. There is deliberately no shorter normal-close TTL:
 // when metadata or the table cap is exhausted ReserveCreate
 // rejects the NEW key with DBB_QUOTA_EXCEEDED; records inside the guarantee are
 // never evicted early.

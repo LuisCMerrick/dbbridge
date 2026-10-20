@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// gen-config opts in to plaintext per peer instead of the legacy global key.
+// gen-config opts in to plaintext per peer.
 func TestGeneratedInsecureHTTPUsesPerPeerKey(t *testing.T) {
 	o := DefaultGeneratePairOptions()
 	o.OutputDir = t.TempDir()
@@ -20,11 +20,11 @@ func TestGeneratedInsecureHTTPUsesPerPeerKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(b), "allow_insecure_remote_http") || !strings.Contains(string(b), "allow_insecure_http: true") {
+	if !strings.Contains(string(b), "allow_insecure_http: true") {
 		t.Fatalf("generated config:\n%s", b)
 	}
 	cfg, err := LoadConfig(files.ConfigA)
-	if err != nil || !cfg.Peers[0].AllowInsecureHTTP || cfg.Transport.AllowInsecureRemoteHTTP {
+	if err != nil || !cfg.Peers[0].AllowInsecureHTTP {
 		t.Fatalf("%v %+v", err, cfg)
 	}
 }

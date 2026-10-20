@@ -47,7 +47,7 @@ type Metrics struct {
 	BufferMemoryBytes         int64
 	SuspendedMemBytes         int64
 
-	// Disconnect supplement metrics per v1.1 Section 6
+	// Session termination and local close.
 	TerminatedDirectTotal          int64
 	TerminatedAfterResumeFailTotal int64
 	RemoteCleanupFailedTotal       int64
@@ -234,8 +234,8 @@ func (s *AdminServer) renderMetrics(w io.Writer) {
 	fmt.Fprintf(w, "# TYPE dbb_piggyback_ack_total counter\ndbb_piggyback_ack_total %d\n", atomic.LoadInt64(&DefaultMetrics.PiggybackAckTotal))
 	fmt.Fprintf(w, "# HELP dbb_explicit_ack_total Total explicit /ack counts\n")
 	fmt.Fprintf(w, "# TYPE dbb_explicit_ack_total counter\ndbb_explicit_ack_total %d\n", atomic.LoadInt64(&DefaultMetrics.ExplicitAckTotal))
-	writeCounter(w, "dbb_resume_success", "Total successful resumes", atomic.LoadInt64(&DefaultMetrics.ResumeSuccess))
-	writeCounter(w, "dbb_resume_failed", "Total failed resumes", atomic.LoadInt64(&DefaultMetrics.ResumeFailed))
+	writeCounter(w, "dbb_resume_success_total", "Total successful resumes", atomic.LoadInt64(&DefaultMetrics.ResumeSuccess))
+	writeCounter(w, "dbb_resume_failed_total", "Total failed resumes", atomic.LoadInt64(&DefaultMetrics.ResumeFailed))
 	fmt.Fprintf(w, "# HELP dbb_buffer_memory_bytes Total buffered memory bytes in use\n")
 	fmt.Fprintf(w, "# TYPE dbb_buffer_memory_bytes gauge\ndbb_buffer_memory_bytes %d\n", atomic.LoadInt64(&DefaultMetrics.BufferMemoryBytes))
 	fmt.Fprintf(w, "# HELP dbb_suspended_mem_bytes Memory bytes occupied by suspended sessions\n")
@@ -251,7 +251,7 @@ func (s *AdminServer) renderMetrics(w io.Writer) {
 	fmt.Fprintf(w, "# TYPE dbb_remote_cleanup_unknown_total counter\ndbb_remote_cleanup_unknown_total %d\n", atomic.LoadInt64(&DefaultMetrics.RemoteCleanupUnknownTotal))
 	fmt.Fprintf(w, "# HELP dbb_client_close_duration_sum_ms Total client close duration in milliseconds\n")
 	fmt.Fprintf(w, "# TYPE dbb_client_close_duration_sum_ms counter\ndbb_client_close_duration_sum_ms %d\n", atomic.LoadInt64(&DefaultMetrics.ClientCloseDurationSumMs))
-	writeCounter(w, "dbb_client_close_count", "Total client connections actively closed", atomic.LoadInt64(&DefaultMetrics.ClientCloseCount))
+	writeCounter(w, "dbb_client_close_count_total", "Total client connections actively closed", atomic.LoadInt64(&DefaultMetrics.ClientCloseCount))
 	// Fixed order: a map range would reorder the families on every scrape.
 	for _, c := range []struct {
 		name, help string
@@ -274,12 +274,9 @@ func (s *AdminServer) renderMetrics(w io.Writer) {
 	fmt.Fprintf(w, "# TYPE dbb_auth_reload_last_success_timestamp_seconds gauge\ndbb_auth_reload_last_success_timestamp_seconds %d\n", atomic.LoadInt64(&DefaultMetrics.AuthReloadLastSuccessUnix))
 }
 
-// writeCounter emits a counter under its Prometheus name (with _total) and,
-// for compatibility with existing dashboards, under its legacy name.
-// The legacy family is deprecated.
-func writeCounter(w io.Writer, legacy, help string, v int64) {
-	fmt.Fprintf(w, "# HELP %s_total %s\n# TYPE %s_total counter\n%s_total %d\n", legacy, help, legacy, legacy, v)
-	fmt.Fprintf(w, "# HELP %s %s (deprecated: use %s_total)\n# TYPE %s counter\n%s %d\n", legacy, help, legacy, legacy, legacy, v)
+// writeCounter emits one counter family.
+func writeCounter(w io.Writer, name, help string, v int64) {
+	fmt.Fprintf(w, "# HELP %s %s\n# TYPE %s counter\n%s %d\n", name, help, name, name, v)
 }
 
 func SetupLogger(format string, level string) {

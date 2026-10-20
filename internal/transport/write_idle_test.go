@@ -60,7 +60,7 @@ func TestWriteIdleStallAndAbsoluteDeadline(t *testing.T) {
 		var slow atomic.Bool
 		var progress atomic.Int64
 		slow.Store(true)
-		c := NewIdleWriteConn(&auditProgressConn{Conn: local, slow: &slow, progress: &progress})
+		c := NewIdleWriteConn(&testProgressConn{Conn: local, slow: &slow, progress: &progress})
 		c.SetWriteIdle(200 * time.Millisecond)
 		c.SetWriteDeadline(time.Now().Add(45 * time.Millisecond))
 		started := time.Now()
@@ -83,7 +83,7 @@ func (l *slowWriteListener) Accept() (net.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewIdleWriteConn(&auditProgressConn{Conn: c, slow: l.slow, progress: l.progress}), nil
+	return NewIdleWriteConn(&testProgressConn{Conn: c, slow: l.slow, progress: l.progress}), nil
 }
 
 func TestServerWSWriteIdleProgress(t *testing.T) {

@@ -64,7 +64,7 @@ func waitReload(t *testing.T, a *auth.Authenticator, rev uint64) {
 }
 
 // Disabling or deleting the identity, or removing the Target from its ACL,
-// still terminates its live sessions on reload (FR-06(6), 7.4(4,5), AT-05).
+// still terminates its live sessions on reload.
 func TestAuthReloadRevocationClosesSessions(t *testing.T) {
 	for name, peer := range map[string]string{
 		"disabled":    "- id: A\n  enabled: false\n  token_envs: [AUTHZ_TOK]\n  allowed_targets: [db]\n  max_sessions: 5\n",
@@ -85,7 +85,7 @@ func TestAuthReloadRevocationClosesSessions(t *testing.T) {
 				}
 			}
 			write("- id: A\n  token_envs: [AUTHZ_TOK]\n  allowed_targets: [db]\n  max_sessions: 5\n")
-			cfg := fixCfg(t, nil)
+			cfg := testCfg(t, nil)
 			cfg.Targets["other"] = cfg.Targets["db"]
 			cfg.Auth = config.AuthConfig{CredentialsFile: p, ReloadInterval: 20 * time.Millisecond}
 			a := auth.NewAuthenticator(cfg)
@@ -99,7 +99,7 @@ func TestAuthReloadRevocationClosesSessions(t *testing.T) {
 			defer srv.Close()
 			ts := httptest.NewServer(srv.Handler())
 			defer ts.Close()
-			r, c := fixCreate(t, ts.URL, "authz-token-00000001", "c1", "ws")
+			r, c := testCreate(t, ts.URL, "authz-token-00000001", "c1", "ws")
 			if r.StatusCode != 201 {
 				t.Fatalf("create %d", r.StatusCode)
 			}

@@ -23,7 +23,7 @@
 
 ## 2. 加固清单
 
-1. **每一跳网络都使用 TLS。** 要么在 Egress 上配置 `http.tls`，要么让 `http.listen` 只监听回环地址，前面放一个本机 TLS 终结代理。保持 `peers[].tls.verify: true`（默认值）；私有 CA 使用 `tls.ca_file`。除测试环境外，不要设置 `allow_insecure_http`、`http.allow_insecure_listen`、`tls.allow_insecure_skip_verify` 或已弃用的 `transport.allow_insecure_remote_http`。
+1. **每一跳网络都使用 TLS。** 要么在 Egress 上配置 `http.tls`，要么让 `http.listen` 只监听回环地址，前面放一个本机 TLS 终结代理。保持 `peers[].tls.verify: true`（默认值）；私有 CA 使用 `tls.ca_file`。除测试环境外，不要设置 `allow_insecure_http`、`http.allow_insecure_listen`、或 `tls.allow_insecure_skip_verify`。
 2. **每个方向、每个身份各用一个令牌。** 为方便起见，`gen-config` 在一对节点的两个方向上共用一个令牌；生产环境请为每个方向单独配置令牌（参见[示例](examples.zh-CN.md#4-使用-tls-与凭据文件的生产节点对)中的生产示例）。令牌使用 32 个随机字节（`openssl rand -hex 32`）。
 3. **使用令牌文件而不是环境变量**，这样轮换令牌无需重启（§3）。
 4. **最小权限的 ACL。** `allowed_targets` 只列出需要的目标；每个目标都设置 `allowed_cidrs`，主机名目标尤其如此。

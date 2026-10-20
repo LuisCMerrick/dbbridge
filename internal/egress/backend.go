@@ -100,7 +100,7 @@ func (s *Server) runBackendReader(sess *session.Session, notify chan struct{}) {
 }
 
 // loseBackend is the single decision point for a fatal (non-EOF) backend read
-// error such as a reset (FR-04(6), 5.9, 10.1.1, 10.2.2). The
+// error such as a reset. The
 // caller has already settled the n bytes returned with the error through
 // FinishDownRead, so the produced offset is exact. The original database
 // socket is no longer usable: the session is marked BACKEND_LOST, closed and

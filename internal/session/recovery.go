@@ -196,8 +196,7 @@ type barrierEmitState struct {
 // ErrSessionClosed: the session is already terminal when it is returned.
 var ErrBarrierTimeout = fmt.Errorf("%w: egress write barrier timeout", ErrSessionClosed)
 
-// failBarrier is the barrier-expiry decision point (5.8 step B(8), 5.10,
-// 10.2.2, FD-07). Under the session state latch it either sees that the write
+// failBarrier is the barrier-expiry decision point. Under the session state latch it either sees that the write
 // did finish at the deadline (nil: commit normally) or closes the session and
 // its original backend socket and returns a terminal error. No background
 // task is left to commit this resume later, and the same request ID can only

@@ -137,21 +137,16 @@ func (s *ingressSession) ackOutstandingLocked(sentNonce string) bool {
 		!s.rxBlockedAt.IsZero() || s.remoteTxBlocked || s.remoteRxBlocked
 }
 
-// defaultDownFramesAckThreshold makes the control writer acknowledge
-// downstream data after this many frames even when ack_batch_bytes is not
-// reached. Egress caps retained downstream frames per session, so small
-// frames exhaust it long before the byte threshold. 32 stays far
-// below the cap of every egress that does not advertise one (512).
-const defaultDownFramesAckThreshold = 32
+// maxDownFramesAckThreshold makes the control writer acknowledge downstream
+// data after this many frames even when ack_batch_bytes is not reached. The
+// egress caps retained downstream frames per session, so small frames
+// exhaust it long before the byte threshold.
+const maxDownFramesAckThreshold = 32
 
-// downFramesAckThreshold uses the egress-advertised frame cap when the
-// flow-limits extension was negotiated: a quarter of it, and never more than
-// the default.
+// downFramesAckThreshold is a quarter of the egress-advertised frame cap, and
+// never more than maxDownFramesAckThreshold.
 func downFramesAckThreshold(l protocol.SessionLimits) int {
-	if l.DownMaxFrames > 0 {
-		return max(1, min(defaultDownFramesAckThreshold, l.DownMaxFrames/4))
-	}
-	return defaultDownFramesAckThreshold
+	return max(1, min(maxDownFramesAckThreshold, l.DownMaxFrames/4))
 }
 
 // downBytesAckThreshold is ack_batch_bytes, lowered to half the negotiated
@@ -159,7 +154,7 @@ func downFramesAckThreshold(l protocol.SessionLimits) int {
 // ACK timer.
 func downBytesAckThreshold(batch int64, l protocol.SessionLimits) uint64 {
 	if batch <= 0 {
-		return 0 // acknowledge every frame, as before
+		return 0 // acknowledge every frame
 	}
 	if l.DownBufferBytes > 1 {
 		batch = min(batch, l.DownBufferBytes/2)
@@ -169,16 +164,10 @@ func downBytesAckThreshold(batch int64, l protocol.SessionLimits) uint64 {
 
 // upFramesAckThreshold returns how many egress-acknowledged but unconfirmed
 // upstream frames trigger an immediate control ACK. Over WS only the control
-// ACK trims the egress receipt table. Without an advertised limit it relies
-// on the egress config invariant receipt_limit >= 2*inflight+8, so
-// inflight+4 is below it; with the flow-limits extension it also stays at
-// or below half of the advertised limit.
+// ACK trims the egress receipt table. It is inflight+4, and at most half of
+// the advertised receipt limit.
 func upFramesAckThreshold(l protocol.SessionLimits) int {
-	t := max(l.UpMaxInflightFrames, 1) + 4
-	if l.UpReceiptLimit > 0 {
-		t = max(1, min(t, l.UpReceiptLimit/2))
-	}
-	return t
+	return max(1, min(max(l.UpMaxInflightFrames, 1)+4, l.UpReceiptLimit/2))
 }
 
 func controlInterval(c config.TransportConfig) time.Duration {

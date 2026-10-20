@@ -22,7 +22,7 @@ import (
 // Request-level metadata of remote peers (create, /up, stream attach) never
 // takes the Metadata the local listeners of a bidirectional node keep.
 func TestRequestMetadataLeavesIngressReserve(t *testing.T) {
-	cfg := fixCfg(t, []config.InboundPeerConfig{{ID: "A", Tokens: []string{"tokA"}, AllowedTargets: []string{"db"}, MaxSessions: 5}})
+	cfg := testCfg(t, []config.InboundPeerConfig{{ID: "A", Tokens: []string{"tokA"}, AllowedTargets: []string{"db"}, MaxSessions: 5}})
 	cfg.Resources = resource.NewManager(256<<20, 32<<20, 2<<20, 8) // Metadata 1 MiB, reserve 128 KiB
 	cfg.Listeners = []config.ListenerConfig{{ID: "l1", Listen: "127.0.0.1:0", Peer: "A"}}
 	cfg.Transport.ControlRequestTimeout = 10 * time.Second
@@ -87,7 +87,7 @@ func upFrame(t *testing.T, url, token, stream string, cr protocol.CreateSessionR
 // A peer's WS readers waiting for frame bodies hold codec from that peer's
 // share only: another peer's data plane keeps working.
 func TestWSReadersStayWithinPeerCodecShare(t *testing.T) {
-	cfg := fixCfg(t, []config.InboundPeerConfig{
+	cfg := testCfg(t, []config.InboundPeerConfig{
 		{ID: "A", Tokens: []string{"tokA"}, AllowedTargets: []string{"db"}, MaxSessions: 40},
 		{ID: "C", Tokens: []string{"tokC"}, AllowedTargets: []string{"db"}, MaxSessions: 4},
 	})
@@ -127,7 +127,7 @@ func TestWSReadersStayWithinPeerCodecShare(t *testing.T) {
 // On a bidirectional node the egress codec shares leave the local ingress
 // its Codec reserve.
 func TestEgressCodecLeavesIngressReserve(t *testing.T) {
-	cfg := fixCfg(t, []config.InboundPeerConfig{{ID: "A", Tokens: []string{"tokA"}, AllowedTargets: []string{"db"}, MaxSessions: 5}})
+	cfg := testCfg(t, []config.InboundPeerConfig{{ID: "A", Tokens: []string{"tokA"}, AllowedTargets: []string{"db"}, MaxSessions: 5}})
 	cfg.Listeners = []config.ListenerConfig{{ID: "l1", Listen: "127.0.0.1:0", Peer: "A"}}
 	s, _ := egrServer(t, cfg)
 	res := cfg.Resources
@@ -151,7 +151,7 @@ func TestEgressCodecLeavesIngressReserve(t *testing.T) {
 
 // The codec reserve never leaves the egress less than one maximal charge.
 func TestIngressCodecReserveKeepsOneEgressFrame(t *testing.T) {
-	cfg := fixCfg(t, nil)
+	cfg := testCfg(t, nil)
 	cfg.Listeners = []config.ListenerConfig{{ID: "l1", Listen: "127.0.0.1:0", Peer: "A"}}
 	cfg.Resources = resource.NewManager(256<<20, sseDownCost(1024)+2048, 32<<20, 8)
 	applyIngressCodecReserve(cfg)
@@ -172,7 +172,7 @@ func TestDownstreamCodecChargePerTransport(t *testing.T) {
 	if got := sseDownCost(256 << 10); got != 6*(256<<10)+16384 {
 		t.Fatalf("sse charge %d", got)
 	}
-	cfg := fixCfg(t, nil)
+	cfg := testCfg(t, nil)
 	cfg.HTTP.AllowedTransports = []string{"ws"}
 	if got := maxCodecCharge(cfg); got != int64(16<<10) {
 		t.Fatalf("ws-only max charge for 1 KiB frames %d", got)
@@ -185,7 +185,7 @@ func TestDownstreamCodecChargePerTransport(t *testing.T) {
 
 // An /up frame above the negotiated max_frame_size is refused 413 unread.
 func TestOversizedUpFrameIsFrameTooLarge(t *testing.T) {
-	cfg := fixCfg(t, []config.InboundPeerConfig{{ID: "A", Tokens: []string{"tokA"}, AllowedTargets: []string{"db"}, MaxSessions: 5}})
+	cfg := testCfg(t, []config.InboundPeerConfig{{ID: "A", Tokens: []string{"tokA"}, AllowedTargets: []string{"db"}, MaxSessions: 5}})
 	s, ts := egrServer(t, cfg)
 	st, _, cr := egrCreate(t, ts.URL, "tokA", "u1", "db")
 	if st != 201 {
@@ -206,7 +206,7 @@ func TestOversizedUpFrameIsFrameTooLarge(t *testing.T) {
 
 // Each enabled peer's codec share is its fair part of the egress Codec.
 func TestPeerCodecShareFollowsEnabledPeers(t *testing.T) {
-	cfg := fixCfg(t, []config.InboundPeerConfig{
+	cfg := testCfg(t, []config.InboundPeerConfig{
 		{ID: "A", Tokens: []string{"tokA"}, AllowedTargets: []string{"db"}, MaxSessions: 2},
 		{ID: "B", Tokens: []string{"tokB"}, AllowedTargets: []string{"db"}, MaxSessions: 2},
 		{ID: "C", Tokens: []string{"tokC"}, AllowedTargets: []string{"db"}, MaxSessions: 2},

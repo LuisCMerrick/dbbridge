@@ -5,7 +5,6 @@ import (
 	"dbbridge/internal/protocol"
 	"fmt"
 	"math"
-	"net/http"
 	"strconv"
 	"time"
 )
@@ -32,10 +31,7 @@ func (c *TripleTransportClient) Probe(ctx context.Context, node, nonce string) (
 func (c *TripleTransportClient) CreateSession(ctx context.Context, target string, limits protocol.SessionLimits, id string, recovery protocol.RecoveryNegotiation, inst, mode string) (*protocol.CreateSessionResponse, error) {
 	q := protocol.CreateSessionRequest{ProtocolVersion: protocol.ProtocolVersionString, TargetID: target, CreateRequestID: id, IngressInstanceID: c.instanceID, Transport: protocol.TransportMode{Mode: mode}, Recovery: recovery, Limits: limits}
 	var r protocol.CreateSessionResponse
-	// Offer the flow-limits extension; an egress that does not know it
-	// ignores the header and answers plain 1.4.
-	h := http.Header{protocol.HeaderFeatures: {protocol.FeatureFlowLimits}}
-	e := c.request(ctx, c.controlClient, "POST", "/v1/sessions", jsonBody(q), "", "", inst, 0, h, &r, 200, 201)
+	e := c.request(ctx, c.controlClient, "POST", "/v1/sessions", jsonBody(q), "", "", inst, 0, nil, &r, 200, 201)
 	if e != nil {
 		return nil, e
 	}
@@ -78,11 +74,11 @@ func (c *TripleTransportClient) validateCreateResponse(r *protocol.CreateSession
 		return bad("limits.up_window_bytes")
 	case r.Limits.DownBufferBytes <= 0 || r.Limits.DownBufferBytes > limits.DownBufferBytes:
 		return bad("limits.down_buffer_bytes")
-	case r.Limits.UpReceiptLimit < 0 || r.Limits.UpReceiptLimit != 0 && r.Limits.UpReceiptLimit <= r.Limits.UpMaxInflightFrames:
+	case r.Limits.UpReceiptLimit <= r.Limits.UpMaxInflightFrames:
 		// Below inflight+1 the peer would refuse frames the negotiated
 		// window allows.
 		return bad("limits.up_receipt_limit")
-	case r.Limits.DownMaxFrames < 0:
+	case r.Limits.DownMaxFrames <= 0:
 		return bad("limits.down_max_frames")
 	case r.UnattachedTimeoutMs <= 0:
 		return bad("unattached_timeout_ms")

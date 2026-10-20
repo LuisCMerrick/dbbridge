@@ -229,7 +229,6 @@ How each value is used and when to change it is in [Transport](transport.md).
 | `ws.write_idle_timeout` | duration | `60s` | > 0. |
 | `frame_size` | size | `min(32KiB, max_frame_size)` | > 0, ≤ `max_frame_size`. |
 | `max_frame_size` | size | `min(256KiB, up_window_bytes)` | > 0, ≤ 1 MiB, ≤ `up_window_bytes`. |
-| `max_coalesce_delay` | duration | `1ms` | 0–1 ms. Accepted for compatibility; data is forwarded as soon as it is read, so the value has no effect. |
 | `up_max_inflight_frames` | int | `8` | Positive; ≤ `metadata_limit / 192`. |
 | `up_window_bytes` | size | `min(2MiB, buffer_per_direction)` | ≥ `max_frame_size`, ≤ `buffer_per_direction`. |
 | `receipt_limit_per_session` | int | `max(64, 2 × up_max_inflight_frames + 8)` | ≥ `2 × up_max_inflight_frames + 8`; ≤ `metadata_limit / 160`. |
@@ -259,7 +258,6 @@ How each value is used and when to change it is in [Transport](transport.md).
 | `sse_write_idle_timeout` | duration | `60s` | > 0. |
 | `backpressure_timeout` | duration | `120s` | > 0. |
 | `shutdown_timeout` | duration | `30s` | > 0. |
-| `allow_insecure_remote_http` | bool | `false` | Deprecated. Implies `http.allow_insecure_listen` and `allow_insecure_http` for every peer. Use the two specific keys instead. |
 | `use_environment_proxy` | bool | `false` | Use `HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY` (and lower-case forms) for peer connections. Read once per process. |
 | `sql_replay` | bool | `false` | Must be `false`. |
 

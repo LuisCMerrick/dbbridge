@@ -54,9 +54,9 @@ func TestStopDrainsBeforeForceClose(t *testing.T) {
 	}
 }
 
-// #10: a stopped node refuses to start again instead of half-starting with a
+// A stopped node refuses to start again instead of half-starting with a
 // closed authenticator and a cancelled egress server.
-func TestFixStartAfterStopFails(t *testing.T) {
+func TestStartAfterStopFails(t *testing.T) {
 	cfg := &config.Config{Node: config.NodeConfig{ID: "restart-test"}, HTTP: config.HTTPConfig{Enabled: true, Listen: "127.0.0.1:0"}, Transport: config.TransportConfig{ShutdownTimeoutRaw: "50ms"}}
 	if err := cfg.ApplyDefaultsAndValidate(); err != nil {
 		t.Fatal(err)

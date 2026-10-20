@@ -21,7 +21,7 @@ func TestWriteNewDoesNotReplaceExistingFile(t *testing.T) {
 	}
 }
 
-func TestFixSyncDir(t *testing.T) {
+func TestSyncDir(t *testing.T) {
 	if err := SyncDir(t.TempDir()); err != nil {
 		t.Fatal(err)
 	}

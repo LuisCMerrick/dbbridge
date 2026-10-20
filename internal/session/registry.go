@@ -27,7 +27,7 @@ type Registry struct {
 	ttl                  time.Duration
 	draining             bool
 	maxSessions          int
-	pendingCreates       int // DBB-A11: in-flight creates
+	pendingCreates       int // in-flight creates
 	currentGlobalMem     int64
 }
 

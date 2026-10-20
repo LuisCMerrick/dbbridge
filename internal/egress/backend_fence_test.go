@@ -25,11 +25,11 @@ func (c *eofTailConn) Read(p []byte) (int, error) {
 	return copy(p, "tail"), io.EOF
 }
 
-// DBB-AUD-03 boundary: only non-EOF read errors fence recovery. A normal
+// Only non-EOF read errors fence recovery. A normal
 // backend EOF settles the tail bytes, records the down FIN and keeps the
-// session open and recoverable (FR-04(6) "正常方向 EOF 按 FIN 排空", 5.9).
+// session open and recoverable.
 func TestBackendNormalEOFStillDrainsAndRecovers(t *testing.T) {
-	cfg := fixCfg(t, nil)
+	cfg := testCfg(t, nil)
 	cfg.Transport.FrameSize = 512
 	srv := &Server{cfg: cfg, ctx: context.Background()}
 	c, b := net.Pipe()

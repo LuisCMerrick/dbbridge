@@ -40,7 +40,6 @@ func (s *Server) streamWriter(ctx context.Context, sess *session.Session, ep uin
 	_, downFinState := sess.FINs()
 	finSent := downFinState.Acked
 	lastPing := time.Time{}
-	flowHints := sess.FlowHints()
 	lastWanted := false
 	codec := s.codecFor(sess.OwnerPeer)
 	frameCost := sseDownCost
@@ -71,10 +70,10 @@ schedule:
 			lastPing = time.Now()
 		}
 		a := sess.Snapshot()
-		// With flow hints, a newly wanted control ACK is announced even
-		// when the ack offset has not moved; re-sending an
-		// unchanged ack_up_offset is a no-op for the peer.
-		wanted := flowHints && sess.AckWanted()
+		// A newly wanted control ACK is announced even when the ack
+		// offset has not moved; re-sending an unchanged ack_up_offset is
+		// a no-op for the peer.
+		wanted := sess.AckWanted()
 		if a.AckUpOffset != lastACK || a.UpFinApplied != lastFin || wanted && !lastWanted {
 			v := s.control(sess, ep, stream, "ack_up")
 			v.AckUpOffset = a.AckUpOffset
@@ -196,8 +195,8 @@ const (
 	terminalNoticeGrace = 2 * time.Second
 )
 
-// terminalError is the bound terminal `error` control message of 5.6.1 and
-// 5.6.3. retryable and session_closed are always present on the wire.
+// terminalError is the bound terminal `error` control message. retryable and
+// session_closed are always present on the wire.
 type terminalError struct {
 	Type          string `json:"type"`
 	SessionID     string `json:"session_id"`

@@ -108,8 +108,8 @@ func (s *Session) activateLocked(epoch uint64, id string) error {
 	return nil
 }
 
-// StartUnattachedTimer fixes the absolute initial attach deadline (5.3(6),
-// unattached_timeout) for the current epoch. ReserveStream and ready
+// StartUnattachedTimer fixes the absolute initial attach deadline
+// (unattached_timeout) for the current epoch. ReserveStream and ready
 // activation refuse once it has passed, and the timer itself closes the session
 // under the same lock if the initial attach is still pending, so expiry and
 // activation have one decision point. onTimeout, if set, runs after

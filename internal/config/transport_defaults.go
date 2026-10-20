@@ -42,14 +42,6 @@ func (c *Config) applyTransportDefaults() error {
 	}
 	c.Transport.MaxFrameSize = int(maxFrameSize)
 
-	c.Transport.MaxCoalesceDelay, err = parseDuration(c.Transport.MaxCoalesceDelayRaw, 1*time.Millisecond)
-	if err != nil {
-		return fmt.Errorf("invalid transport.max_coalesce_delay: %w", err)
-	}
-	if c.Transport.MaxCoalesceDelay < 0 || c.Transport.MaxCoalesceDelay > time.Millisecond {
-		return errors.New("transport.max_coalesce_delay must be between 0 and 1ms")
-	}
-
 	if c.Transport.UpMaxInflightFrames <= 0 {
 		c.Transport.UpMaxInflightFrames = 8
 	}
@@ -318,7 +310,7 @@ func (c *Config) applyTransportDefaults() error {
 		}
 	}
 	if c.Transport.SQLReplay {
-		return errors.New("sql_replay must be false in DBBridge v1.4")
+		return errors.New("sql_replay is not supported and must be false")
 	}
 	return nil
 }

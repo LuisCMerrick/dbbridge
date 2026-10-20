@@ -14,7 +14,7 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// Section 3.7.2: the allowed fallbacks stay ErrWSUpgradeRejected (raw gateway
+// The allowed fallbacks stay ErrWSUpgradeRejected (raw gateway
 // 400/403/404/405/426/501, a plain non-WS response, a trusted
 // DBB_TRANSPORT_UNSUPPORTED). The selector still re-probes before using SSE.
 func TestPrecheckAllowedFallbacksStayUpgradeRejected(t *testing.T) {
@@ -46,7 +46,7 @@ func TestPrecheckAllowedFallbacksStayUpgradeRejected(t *testing.T) {
 				_, _ = w.Write([]byte("<html>gateway</html>"))
 			}))
 			defer srv.Close()
-			err := fixClient(t, srv.URL, true).PrecheckWS(context.Background(), "B", "bi")
+			err := testClient(t, srv.URL, true).PrecheckWS(context.Background(), "B", "bi")
 			if !errors.Is(err, ErrWSUpgradeRejected) || errors.Is(err, ErrProtocol) {
 				t.Fatalf("err=%v, want ErrWSUpgradeRejected only", err)
 			}
@@ -66,7 +66,7 @@ func TestPrecheckAllowedFallbacksStayUpgradeRejected(t *testing.T) {
 	}
 }
 
-// Section 3.7.3(2): a raw 401 and trusted DBBridge refusals keep their
+// A raw 401 and trusted DBBridge refusals keep their
 // RemoteError form and are never an upgrade rejection.
 func TestPrecheckRawUnauthorizedAndTrustedErrorsAreNotUpgradeRejections(t *testing.T) {
 	cases := map[string]struct {
@@ -84,7 +84,7 @@ func TestPrecheckRawUnauthorizedAndTrustedErrorsAreNotUpgradeRejections(t *testi
 				_ = json.NewEncoder(w).Encode(protocol.ErrorResponse{Code: protocol.ErrUnauthorized})
 			}))
 			defer srv.Close()
-			err := fixClient(t, srv.URL, true).PrecheckWS(context.Background(), "B", "bi")
+			err := testClient(t, srv.URL, true).PrecheckWS(context.Background(), "B", "bi")
 			var re *RemoteError
 			if errors.Is(err, ErrWSUpgradeRejected) || !errors.As(err, &re) || re.Status != c.status || re.Trusted != c.trusted {
 				t.Fatalf("err=%v, want RemoteError %d trusted=%v", err, c.status, c.trusted)
@@ -93,7 +93,7 @@ func TestPrecheckRawUnauthorizedAndTrustedErrorsAreNotUpgradeRejections(t *testi
 	}
 }
 
-// Sections 3.7.3(3), 5.11 (DBB_WS_PROTOCOL_ERROR): after a 101 with the right
+// After a 101 with the right
 // subprotocol, an illegal WebSocket frame or an oversized hello is protocol
 // data that must not be tolerated by switching to SSE.
 func TestPrecheckIllegalFramesAfterUpgradeAreProtocolErrors(t *testing.T) {
@@ -115,7 +115,7 @@ func TestPrecheckIllegalFramesAfterUpgradeAreProtocolErrors(t *testing.T) {
 				_, _, _ = c.ReadMessage()
 			}))
 			defer srv.Close()
-			err := fixClient(t, srv.URL, true).PrecheckWS(context.Background(), "B", "bi")
+			err := testClient(t, srv.URL, true).PrecheckWS(context.Background(), "B", "bi")
 			if !errors.Is(err, ErrProtocol) || errors.Is(err, ErrWSUpgradeRejected) {
 				t.Fatalf("err=%v, want ErrProtocol only", err)
 			}
@@ -123,7 +123,7 @@ func TestPrecheckIllegalFramesAfterUpgradeAreProtocolErrors(t *testing.T) {
 	}
 }
 
-// DBB-AUD-10 (5.4.3, 5.8(16), 5.9.1(5), TF-13): a successful ACK/POST/FIN
+// A successful ACK/POST/FIN
 // response with a wrong binding is a comparable ErrProtocol at the transport
 // boundary, not an unclassified error.
 func TestResponseBindingMismatchIsErrProtocol(t *testing.T) {
@@ -143,7 +143,7 @@ func TestResponseBindingMismatchIsErrProtocol(t *testing.T) {
 				}
 			}))
 			defer srv.Close()
-			c := fixClient(t, srv.URL, true)
+			c := testClient(t, srv.URL, true)
 			c.BindStream("s", 1, "st", "ws")
 			var err error
 			switch op {

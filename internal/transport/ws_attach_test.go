@@ -29,12 +29,12 @@ func readyAfter(delay time.Duration) *httptest.Server {
 	}))
 }
 
-// Sections 5.4.3 / 7.1.1: ws.handshake_timeout covers only the Upgrade; the
+// ws.handshake_timeout covers only the Upgrade; the
 // ready message may arrive at any time within the attach budget.
 func TestWSReadyWaitsForAttachBudgetNotHandshakeTimeout(t *testing.T) {
 	srv := readyAfter(600 * time.Millisecond)
 	defer srv.Close()
-	c := fixClient(t, srv.URL, true) // ws.handshake_timeout 300ms
+	c := testClient(t, srv.URL, true) // ws.handshake_timeout 300ms
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	ws, ready, err := c.DialWSSession(ctx, "s1", "tok", 1, "bi")
@@ -52,7 +52,7 @@ func TestWSReadyWaitsForAttachBudgetNotHandshakeTimeout(t *testing.T) {
 func TestWSReadyPastAttachBudgetIsDeadlineExceeded(t *testing.T) {
 	srv := readyAfter(800 * time.Millisecond)
 	defer srv.Close()
-	c := fixClient(t, srv.URL, true)
+	c := testClient(t, srv.URL, true)
 	ctx, cancel := context.WithTimeout(context.Background(), 400*time.Millisecond)
 	defer cancel()
 	ws, _, err := c.DialWSSession(ctx, "s1", "tok", 1, "bi")

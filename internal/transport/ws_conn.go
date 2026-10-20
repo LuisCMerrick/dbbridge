@@ -48,7 +48,8 @@ func (w *WSSessionConn) WriteTextMessage(data []byte) error {
 }
 
 // Close gracefully closes the connection without waiting for writeMu.
-// DBB-A06: Interrupt network I/O immediately to respect the 1-second active disconnect constraint.
+// Network I/O is interrupted at once so an active disconnect completes
+// within one second.
 func (w *WSSessionConn) Close() error {
 	w.closedMu.Lock()
 	defer w.closedMu.Unlock()

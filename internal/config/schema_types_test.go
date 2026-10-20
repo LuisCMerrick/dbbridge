@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func TestAudit20261018RejectNullAndWrongScalarTypes(t *testing.T) {
+func TestRejectNullAndWrongScalarTypes(t *testing.T) {
 	for _, body := range []string{
 		"node: {id: A}\ntransport: {recovery: {enabled: null}}\n",
 		"node: {id: A}\nhttp: {allowed_transports: null}\n",
@@ -56,7 +56,7 @@ func TestMainConfigLimitBeforeAllocation(t *testing.T) {
 	}
 }
 
-func TestAudit20261018CredentialLimitBeforeAllocation(t *testing.T) {
+func TestCredentialLimitBeforeAllocation(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "oversized-auth.yaml")
 	f, err := os.Create(path)
 	if err != nil {

@@ -112,8 +112,7 @@ func (m *PeerLinkManager) RecordSuccess(epID string, probe *protocol.ProbeRespon
 			if ep.ConsecutiveSuccesses >= max(m.failoverCfg.HealthyThreshold, 1) {
 				// healthy_threshold successes end the UNHEALTHY state, but a
 				// running failure cooldown is never cut short: a cheap probe
-				// must not send sessions straight back to a failing path
-				// (requirements 3.2(4), 3.8).
+				// must not send sessions straight back to a failing path.
 				ep.State = StateHealthy
 			}
 			ep.mu.Unlock()
@@ -186,7 +185,7 @@ func (ep *Endpoint) coolTransportLocked(mode string, until time.Time) {
 // RecordPathFailure records a whole-path transport error of a real request
 // (not a probe) on an endpoint: the address enters the failure cooldown for
 // this fault cycle at once, independent of unhealthy_threshold, which only
-// governs the probe-driven UNHEALTHY state (requirements 3.2(3,4), 3.8).
+// governs the probe-driven UNHEALTHY state.
 func (m *PeerLinkManager) RecordPathFailure(epID string) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -213,7 +212,7 @@ func (m *PeerLinkManager) cooldown() time.Duration {
 // RecordTransportDrop records that an established carrier of transportMode
 // was lost. The first drop already cools that (Endpoint, transport) pair down
 // for this fault cycle, so recovery does not return to the carrier that just
-// failed (requirements 3.2(4), 3.8). Other carriers and the address itself
+// failed. Other carriers and the address itself
 // are not affected.
 func (m *PeerLinkManager) RecordTransportDrop(epID string, transportMode string) {
 	m.RecordTransportFailure(epID, transportMode)

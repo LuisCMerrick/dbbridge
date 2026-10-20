@@ -42,7 +42,7 @@ func (f *fakeNode) get() []string {
 	return append([]string(nil), f.events...)
 }
 
-// CLI-1: the force-exit handler is active for the whole drain: installed
+// The force-exit handler is active for the whole drain: installed
 // before Stop starts and removed only after Stop returns.
 func TestServeForceExitCoversDrain(t *testing.T) {
 	n := &fakeNode{fatal: make(chan error, 1), release: make(chan struct{})}
@@ -70,7 +70,7 @@ func TestServeForceExitCoversDrain(t *testing.T) {
 	}
 }
 
-// X-LC-1: a fatal background failure stops the node and is returned so the
+// A fatal background failure stops the node and is returned so the
 // process exits non-zero.
 func TestServeReturnsFatalBackgroundError(t *testing.T) {
 	n := &fakeNode{fatal: make(chan error, 1)}
@@ -91,7 +91,7 @@ func TestServeReturnsFatalBackgroundError(t *testing.T) {
 	}
 }
 
-// CLI-2: the default version never contains the run date.
+// The default version never contains the run date.
 func TestResolveBuildInfoIsStable(t *testing.T) {
 	none := func() (*debug.BuildInfo, bool) { return nil, false }
 	v, c, d := resolveBuildInfo("", "unknown", "unknown", none)
@@ -110,7 +110,7 @@ func TestResolveBuildInfoIsStable(t *testing.T) {
 	}
 }
 
-// CLI-6 and CLI-5: configuration errors exit with EX_CONFIG; --offline
+// Configuration errors exit with EX_CONFIG; --offline
 // validates without secrets.
 func TestCheckConfigExitCodeAndOffline(t *testing.T) {
 	dir := t.TempDir()
