@@ -11,6 +11,7 @@ import (
 	"dbbridge/internal/fileutil"
 
 	"golang.org/x/sys/windows"
+	"golang.org/x/sys/windows/registry"
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/eventlog"
 	"golang.org/x/sys/windows/svc/mgr"
@@ -36,14 +37,14 @@ func install(ctx context.Context, p Plan) (err error) {
 		return err
 	}
 	createdEnv, err := saveEnvironment(p)
-	if err != nil {
-		return err
-	}
 	defer func() {
 		if err != nil && createdEnv {
 			_ = os.Remove(p.EnvironmentFile)
 		}
 	}()
+	if err != nil {
+		return err
+	}
 	s, err := m.CreateService(p.Name, p.Executable, mgr.Config{DisplayName: "DBBridge (" + p.Name + ")", Description: marker + ": peer node", StartType: mgr.StartAutomatic, ErrorControl: mgr.ErrorNormal, ServiceStartName: account, Dependencies: []string{"Tcpip"}}, p.Arguments...)
 	if err != nil {
 		return err
@@ -55,21 +56,15 @@ func install(ctx context.Context, p Plan) (err error) {
 			_ = s.Delete()
 		}
 	}()
-	if err = eventlog.InstallAsEventCreate(p.Name, eventlog.Error|eventlog.Warning|eventlog.Info); err != nil {
-		// No service of this name exists (checked above), so a source of the
-		// same name is a leftover of an earlier failed install.
-		if eventlog.Remove(p.Name) != nil {
-			return fmt.Errorf("event log source: %w", err)
-		}
-		if err = eventlog.InstallAsEventCreate(p.Name, eventlog.Error|eventlog.Warning|eventlog.Info); err != nil {
-			return fmt.Errorf("event log source: %w", err)
-		}
-	}
+	createdSource, err := installEventSource(p.Name)
 	defer func() {
-		if !registered {
-			_ = eventlog.Remove(p.Name)
+		if !registered && createdSource {
+			_ = removeEventSource(p.Name)
 		}
 	}()
+	if err != nil {
+		return err
+	}
 	// The restart action applies when the process ends without reporting
 	// SERVICE_STOPPED (a crash, or a runtime failure, which dbbridge turns
 	// into one). A configuration error is reported as SERVICE_STOPPED with
@@ -159,10 +154,83 @@ func uninstall(ctx context.Context, name string) error {
 	if err = s.Delete(); err != nil {
 		return err
 	}
-	if err = eventlog.Remove(name); err != nil {
+	if err = removeEventSource(name); err != nil {
 		return fmt.Errorf("service removed, but event log source cleanup failed: %w", err)
 	}
 	return nil
+}
+
+// eventSourceKey is the registry key of an Application event log source.
+const eventSourceKey = `SYSTEM\CurrentControlSet\Services\EventLog\Application\`
+
+// eventSourceOwnerValue marks an event log source created by DBBridge; its
+// value is marker. Sources without it belong to other software.
+const eventSourceOwnerValue = "DBBridgeOwner"
+
+// installEventSource registers the event log source name and marks it as
+// DBBridge's. A source of that name left behind by an earlier DBBridge
+// installation is replaced; one owned by other software is never touched and
+// makes the installation fail. created reports whether this call left a
+// source that the caller must remove if the installation fails.
+func installEventSource(name string) (created bool, err error) {
+	const types = eventlog.Error | eventlog.Warning | eventlog.Info
+	if err = eventlog.InstallAsEventCreate(name, types); err != nil {
+		owned, e := eventSourceOwned(name)
+		if e != nil {
+			return false, fmt.Errorf("event log source %s: %w", name, errors.Join(err, e))
+		}
+		if !owned {
+			return false, fmt.Errorf("event log source %s already exists and is not managed by DBBridge; choose another --service-name or remove that source: %w", name, err)
+		}
+		if err = eventlog.Remove(name); err != nil {
+			return false, fmt.Errorf("event log source %s: remove leftover source: %w", name, err)
+		}
+		if err = eventlog.InstallAsEventCreate(name, types); err != nil {
+			return false, fmt.Errorf("event log source %s: %w", name, err)
+		}
+	}
+	k, err := registry.OpenKey(registry.LOCAL_MACHINE, eventSourceKey+name, registry.SET_VALUE)
+	if err != nil {
+		_ = eventlog.Remove(name)
+		return false, fmt.Errorf("event log source %s: %w", name, err)
+	}
+	defer k.Close()
+	if err = k.SetStringValue(eventSourceOwnerValue, marker); err != nil {
+		_ = eventlog.Remove(name)
+		return false, fmt.Errorf("event log source %s: %w", name, err)
+	}
+	return true, nil
+}
+
+// eventSourceOwned reports whether the event log source name exists and
+// carries the DBBridge owner mark.
+func eventSourceOwned(name string) (bool, error) {
+	k, err := registry.OpenKey(registry.LOCAL_MACHINE, eventSourceKey+name, registry.QUERY_VALUE)
+	if errors.Is(err, registry.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	defer k.Close()
+	v, _, err := k.GetStringValue(eventSourceOwnerValue)
+	if errors.Is(err, registry.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return v == marker, nil
+}
+
+// removeEventSource removes the event log source name only when DBBridge owns
+// it; a missing or foreign source is left alone.
+func removeEventSource(name string) error {
+	owned, err := eventSourceOwned(name)
+	if err != nil || !owned {
+		return err
+	}
+	return eventlog.Remove(name)
 }
 
 // checkWindowsReadPaths verifies from the DACLs that the service account can

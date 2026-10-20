@@ -184,6 +184,7 @@ Every family has `# HELP` and `# TYPE` lines and a stable order. Side: **E** = c
 | `dbb_remote_cleanup_failed_total` | counter | I | Remote DELETEs that failed. |
 | `dbb_remote_cleanup_unknown_total` | counter | I | Remote DELETEs with an unknown outcome. |
 | `dbb_session_events_total{role,event,reason,from,to}` | counter | both | Lifecycle events; label values in §6. |
+| `dbb_ingress_faults_total{source,reason}` | counter | I | Carrier faults by where they were detected: `data` (reading the WS or SSE carrier), `upstream` (sending frames or waiting for their confirmation), `control` (the control API), `liveness` (no session traffic within `failure_detect_timeout`). |
 | `dbb_operation_duration_seconds{role,phase}` | histogram | both | Duration of `barrier`, `local_close`, `recovery`, `cleanup`, `probe`, `precheck`, `attach`, `control`; buckets 0.001 … 60 s. |
 | `dbb_endpoint_state{peer,endpoint,state}` | gauge | I | 1 for the endpoint's current state: `UNKNOWN`, `HEALTHY`, `UNHEALTHY`, `MISMATCHED`. |
 | `dbb_phase_duration_seconds{peer,endpoint,phase,success}` | summary | I | Duration per endpoint of `probe`, `precheck`, `attach`, `control` and each resume attempt (`recovery`). |
@@ -231,7 +232,7 @@ Logs go to stderr (`--log-format text` or `json`): under systemd to the journal 
 | `ingress connection rejected: local budget exhausted` | WARN | A local client was refused. |
 | `ingress listener is bound to a non-loopback address; ...` | WARN | |
 
-**`session terminated` fields:** `session`, `role=ingress`, `peer`, `endpoint`, `owner` (egress instance), `epoch`, `transport`, `recovery_enabled`, `attempts`, `deadline` (recovery deadline; empty when no recovery was started), `outcome_unknown`, `reason`, `local_close_ms`, `fault_time`, `terminal_time`, `local_closed_time`. Before a session was created, `session`, `endpoint` and `transport` are empty.
+**`session terminated` fields:** `session`, `role=ingress`, `peer`, `endpoint`, `owner` (egress instance), `epoch`, `transport`, `recovery_enabled`, `attempts`, `deadline` (recovery deadline; empty when no recovery was started), `outcome_unknown`, `reason`, `fault_source` and `fault_reason` (the first fault of the last fault cycle; empty when the session ended without a fault), `local_close_ms`, `fault_time`, `terminal_time`, `local_closed_time`. Before a session was created, `session`, `endpoint` and `transport` are empty.
 
 **`reason` values** (log field and `dbb_session_events_total{reason}`):
 

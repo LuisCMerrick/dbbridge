@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"dbbridge/internal/config"
+	"dbbridge/internal/observability"
 	"dbbridge/internal/protocol"
 )
 
@@ -65,7 +66,7 @@ func TestFinalAckAfterFailureCloseKeepsNormalClassification(t *testing.T) {
 	s.upEOF, s.upFINApplied, s.downFIN, s.downFINAcked = true, true, true, false
 	s.mu.Unlock()
 	start := time.Now()
-	s.fault(g, context.DeadlineExceeded, false)
+	s.fault(g, observability.FaultLiveness, context.DeadlineExceeded, false)
 	_ = e.conn.SetReadDeadline(start.Add(4 * time.Second))
 	_, err := e.conn.Read(make([]byte, 1))
 	if d := time.Since(start); err == nil || d >= ackDelay {

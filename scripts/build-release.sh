@@ -35,6 +35,36 @@ for d in docs configs deploy; do
   if [ -d "$d" ]; then package_files+=("$d"); fi
 done
 
+# third_party_notices writes, for the modules linked into binary $1, a
+# module list (third_party/MODULES.txt: path, version, checksum) and each
+# module's license and notice files into directory $2.
+third_party_notices() {
+  local binary="$1" out="$2" dep path version sum dir f
+  mkdir -p "$out"
+  : > "$out/MODULES.txt"
+  go version -m "$binary" | awk '$1 == "dep" { print $2, $3, $4 }' | LC_ALL=C sort | while read -r path version sum; do
+    printf '%s %s %s\n' "$path" "$version" "$sum" >> "$out/MODULES.txt"
+    if [ -d "vendor/$path" ]; then
+      dir="vendor/$path"
+    else
+      dir="$(go mod download -json "$path@$version" | sed -n 's/^[[:space:]]*"Dir": "\(.*\)",*$/\1/p')"
+    fi
+    if [ -z "$dir" ] || [ ! -d "$dir" ]; then
+      echo "no source for $path@$version to copy its license from" >&2
+      return 1
+    fi
+    dep="$out/$path"
+    mkdir -p "$dep"
+    for f in "$dir"/LICENSE* "$dir"/COPYING* "$dir"/NOTICE*; do
+      if [ -f "$f" ]; then cp "$f" "$dep/"; fi
+    done
+    if ! ls "$dep" | grep -q .; then
+      echo "no license file found for $path@$version" >&2
+      return 1
+    fi
+  done
+}
+
 # Absolute output path for commands that run in another directory (zip).
 release_dir_abs="$(cd "$release_dir" && pwd)"
 staging="$(mktemp -d)"
@@ -60,6 +90,7 @@ for target_platform in ${DBB_PLATFORMS:-linux/amd64 linux/arm64 windows/amd64}; 
   if [ "${#package_files[@]}" -gt 0 ]; then
     cp -R "${package_files[@]}" "$root/"
   fi
+  third_party_notices "$release_dir/$binary_name" "$root/third_party"
   find "$root" -exec touch -h -d "@$SOURCE_DATE_EPOCH" {} + 2>/dev/null || true
   if [ "$target_os" = windows ] && command -v zip >/dev/null 2>&1; then
     archive="$package_name.zip"

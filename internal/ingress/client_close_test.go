@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"dbbridge/internal/config"
+	"dbbridge/internal/observability"
 )
 
 // A short controlled 200-session close check, not a 24-hour resource test.
@@ -74,7 +75,7 @@ func TestAcceptance200ClientClose(t *testing.T) {
 			g := s.g
 			s.mu.Unlock()
 			start := time.Now()
-			s.fault(g, fmt.Errorf("controlled transport fault: %w", context.DeadlineExceeded), false)
+			s.fault(g, observability.FaultData, fmt.Errorf("controlled transport fault: %w", context.DeadlineExceeded), false)
 			_ = c.SetReadDeadline(start.Add(3 * time.Second))
 			_, err := c.Read(make([]byte, 1))
 			if err == nil {

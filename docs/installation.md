@@ -34,7 +34,7 @@ Each release publishes:
 
 | File | Content |
 |---|---|
-| `dbbridge-<version>-linux-amd64.tar.gz`, `...-linux-arm64.tar.gz` | Directory `dbbridge-<version>-<os>-<arch>/` with `dbbridge`, `README.md`, `README.zh-CN.md`, `CHANGELOG*`, `docs/`, `configs/`, `deploy/` (and `LICENSE`/`NOTICE` files when present) |
+| `dbbridge-<version>-linux-amd64.tar.gz`, `...-linux-arm64.tar.gz` | Directory `dbbridge-<version>-<os>-<arch>/` with `dbbridge`, `README.md`, `README.zh-CN.md`, `CHANGELOG*`, `docs/`, `configs/`, `deploy/`, `third_party/` (module list and license files of the linked dependencies) and `LICENSE` |
 | `dbbridge-<version>-windows-amd64.zip` | Same content with `dbbridge.exe` |
 | `dbbridge-linux-amd64`, `dbbridge-linux-arm64`, `dbbridge-windows-amd64.exe` | The bare binaries |
 | `BUILD-INFO.txt` | Version, source identity, source hash, build time, `SOURCE_DATE_EPOCH`, Go toolchain |
@@ -172,7 +172,7 @@ Restart-Service dbbridge                 # apply other configuration changes
 
 - Service `<service-name>`, display name `DBBridge (<service-name>)`, automatic start, depends on `Tcpip`. The account is `LocalSystem` by default (with a warning), or `LocalService`/`NetworkService` via `--service-user`.
 - `install` checks the account's read access to every referenced file through its DACL and prints the `icacls` command for each file it cannot confirm. Files written by `gen-config` are readable only by their creator, Administrators and SYSTEM, so grant access as shown. A new environment snapshot is created with read access for the selected service account.
-- Logs go to the Application Event Log with the service name as source.
+- Logs go to the Application Event Log with the service name as source. `install` refuses a service name whose event source already exists and was not created by DBBridge; `uninstall` removes only a source DBBridge created.
 - Stop, system shutdown and pre-shutdown drain the node; the pre-shutdown timeout is `transport.shutdown_timeout + 30 s`.
 - A configuration or credential error stops the service with service-specific exit code 78 (`sc.exe query dbbridge` shows `SERVICE_EXIT_CODE : 78`) and an Event Log error; it is not restarted. Fix the configuration and start the service. Other failures are restarted after 5 s (failure count reset after one day).
 - `sc.exe control <name> paramchange` triggers a credential reload, like `SIGHUP` on Linux.

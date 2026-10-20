@@ -184,9 +184,9 @@ func TestPublishPairRollbackOnSecondWriteFailure(t *testing.T) {
 					}
 				}
 			}
-			keep, err := publishPair(outputs, force, func(path string, data []byte, mode fs.FileMode) error {
+			keep, err := publishPair(outputs, force, func(path string, data []byte, mode fs.FileMode) (bool, error) {
 				if path == outputs[1].path {
-					return errors.New("injected second publication failure")
+					return false, errors.New("injected second publication failure")
 				}
 				return fileutil.WriteNew(path, data, mode)
 			})

@@ -64,6 +64,7 @@ type ingressSession struct {
 	ackNotify                                  chan struct{}
 	ackProgress                                uint64
 	faultTime                                  time.Time
+	faultSource, faultReason                   string // first fault of the current fault cycle
 	recoveryAttempts                           int
 	outcomeUnknown                             bool
 	// ownerClosedNormal is set when the owner answered a resume or attach
@@ -152,6 +153,7 @@ func (s *ingressSession) stopRecovery(lease *resource.RetentionLease, reason err
 		s.mu.Lock()
 		sid, owner := s.sid, s.owner
 		epoch, mode, attempts, deadline, unknown := s.epoch, s.mode, s.recoveryAttempts, s.deadline, s.outcomeUnknown
+		faultSource, faultReason := s.faultSource, s.faultReason
 		endpoint := ""
 		if s.g != nil && s.g.endpoint != nil {
 			endpoint = s.g.endpoint.ID
@@ -167,7 +169,7 @@ func (s *ingressSession) stopRecovery(lease *resource.RetentionLease, reason err
 		}
 		observability.RecordEvent("ingress", "terminate", reasonCategory(reason), mode, "none")
 		observability.ObserveDuration("ingress", "local_close", localClosed.Sub(terminal))
-		slog.Info("session terminated", "session", shortID(sid), "role", "ingress", "peer", s.p.ID, "endpoint", endpoint, "owner", shortID(owner), "epoch", epoch, "transport", mode, "recovery_enabled", s.recovery, "attempts", attempts, "deadline", logTime(deadline), "outcome_unknown", unknown, "reason", reasonCategory(reason), "local_close_ms", localClosed.Sub(terminal).Milliseconds(), "fault_time", faultTime, "terminal_time", terminal, "local_closed_time", localClosed)
+		slog.Info("session terminated", "session", shortID(sid), "role", "ingress", "peer", s.p.ID, "endpoint", endpoint, "owner", shortID(owner), "epoch", epoch, "transport", mode, "recovery_enabled", s.recovery, "attempts", attempts, "deadline", logTime(deadline), "outcome_unknown", unknown, "reason", reasonCategory(reason), "fault_source", faultSource, "fault_reason", faultReason, "local_close_ms", localClosed.Sub(terminal).Milliseconds(), "fault_time", faultTime, "terminal_time", terminal, "local_closed_time", localClosed)
 		s.startRemoteCleanup(reason, mode)
 	})
 }
@@ -262,7 +264,11 @@ func shortID(id string) string {
 	}
 	return id
 }
-func (s *ingressSession) fault(g *generation, e error, fatal bool) {
+
+// fault reports a fault detected at source on generation g (nil: the
+// session itself). The first fault of a fault cycle is kept for the
+// termination log; fatal faults end the session at once.
+func (s *ingressSession) fault(g *generation, source string, e error, fatal bool) {
 	if e == nil || s.closed.Load() || s.localClosing.Load() {
 		return
 	}
@@ -271,12 +277,17 @@ func (s *ingressSession) fault(g *generation, e error, fatal bool) {
 		s.mu.Unlock()
 		return
 	}
+	reason := reasonCategory(e)
 	if s.faultTime.IsZero() {
 		s.faultTime = time.Now()
 	}
+	if s.faultSource == "" {
+		s.faultSource, s.faultReason = source, reason
+	}
 	mode := s.mode
 	s.mu.Unlock()
-	observability.RecordEvent("ingress", "fault", reasonCategory(e), mode, "none")
+	observability.RecordEvent("ingress", "fault", reason, mode, "none")
+	observability.RecordFault(source, reason)
 	if fatal || fatalError(e) {
 		s.stop(e)
 		return

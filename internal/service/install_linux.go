@@ -91,14 +91,14 @@ func (m systemdManager) install(ctx context.Context, p Plan) (err error) {
 		return fmt.Errorf("service account %s: %w", p.Account, err)
 	}
 	createdEnv, err := saveEnvironment(p)
-	if err != nil {
-		return err
-	}
 	defer func() {
 		if err != nil && createdEnv {
 			_ = os.Remove(p.EnvironmentFile)
 		}
 	}()
+	if err != nil {
+		return err
+	}
 	if createdEnv {
 		// Only a snapshot created by this installation is handed to the
 		// service account; an existing one keeps its ownership.
@@ -110,8 +110,11 @@ func (m systemdManager) install(ctx context.Context, p Plan) (err error) {
 			return fmt.Errorf("service account %s: %w", p.Account, err)
 		}
 	}
-	if err = fileutil.WriteNew(path, []byte(p.Unit), 0644); err != nil {
-		return err
+	if created, e := fileutil.WriteNew(path, []byte(p.Unit), 0644); e != nil {
+		if created {
+			_ = os.Remove(path)
+		}
+		return e
 	}
 	if err = m.command(ctx, "daemon-reload"); err != nil {
 		_ = os.Remove(path)

@@ -78,7 +78,7 @@ Egress 按已认证身份限制 WebSocket 预检：最多 2 个并发，每秒 4
 
 ## 4. 故障检测、故障切换与会话恢复
 
-**故障检测。** 双方每隔 `heartbeat` 发送心跳。载体在 `failure_detect_timeout` 内没有任何进展即判定为断开。使用 HTTP/2 时，节点还会每隔 `heartbeat` 发送 PING，5 s 无应答即关闭连接。
+**故障检测。** 双方每隔 `heartbeat` 发送心跳。载体在 `failure_detect_timeout` 内没有任何进展即判定为断开。进展指会话流量（绑定到该会话的事件或 WebSocket 消息，或仍在到达的数据帧）；SSE 注释和解析器忽略的字段（例如代理插入的保活注释）不算进展。使用 HTTP/2 时，节点还会每隔 `heartbeat` 发送 PING，5 s 无应答即关闭连接。
 
 **故障切换。** 每个 peer 的 endpoint 按 `priority` 排序。Ingress 每隔 `failover.healthcheck_interval` 探测一次；连续失败 `unhealthy_threshold` 次后 endpoint 变为 `UNHEALTHY`，连续成功 `healthy_threshold` 次后恢复可用。新会话使用最优的可用 endpoint；优先 endpoint 恢复后，只有新会话会切过去（`failback: new_sessions`）。
 

@@ -123,10 +123,12 @@ func Generate(o GenerateOptions) (result GeneratedFiles, err error) {
 		if _, err = rand.Read(secret[:]); err != nil {
 			return result, err
 		}
-		if err = fileutil.WriteNew(tokenPath, []byte(hex.EncodeToString(secret[:])+"\n"), 0600); err != nil {
+		if created, err = fileutil.WriteNew(tokenPath, []byte(hex.EncodeToString(secret[:])+"\n"), 0600); err != nil {
+			if created {
+				_ = os.Remove(tokenPath)
+			}
 			return result, err
 		}
-		created = true
 	}
 	defer func() {
 		if err != nil && created {
@@ -248,7 +250,12 @@ func Generate(o GenerateOptions) (result GeneratedFiles, err error) {
 			}
 		}
 	} else {
-		err = fileutil.WriteNew(output, data.Bytes(), 0600)
+		var wrote bool
+		if wrote, err = fileutil.WriteNew(output, data.Bytes(), 0600); err != nil && wrote {
+			// The configuration was created by this call; remove it so that
+			// no output references a token the deferred cleanup removes.
+			_ = os.Remove(output)
+		}
 	}
 	if err != nil {
 		return result, err

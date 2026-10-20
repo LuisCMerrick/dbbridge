@@ -16,7 +16,7 @@ func TestEnvironmentSnapshotSelectedWindowsAccountACL(t *testing.T) {
 		t.Run(account, func(t *testing.T) {
 			p := Plan{Account: account, EnvironmentFile: filepath.Join(t.TempDir(), "service.environment.json")}
 			data := []byte(`{"TOKEN":"snapshot-value"}`)
-			if err := writeEnvironmentFile(p, data); err != nil {
+			if _, err := writeEnvironmentFile(p, data); err != nil {
 				t.Fatal(err)
 			}
 			if err := validateEnvironmentAccess(p); err != nil {
@@ -66,7 +66,7 @@ func TestEnvironmentSnapshotSelectedWindowsAccountACL(t *testing.T) {
 func TestEnvironmentExistingSnapshotACLIsNotWidened(t *testing.T) {
 	p := Plan{Account: "LocalService", EnvironmentFile: filepath.Join(t.TempDir(), "existing.json"), environment: map[string]string{"TOKEN": "original"}}
 	data := []byte("{\n  \"TOKEN\": \"original\"\n}\n")
-	if err := fileutil.WriteNew(p.EnvironmentFile, data, 0600); err != nil {
+	if _, err := fileutil.WriteNew(p.EnvironmentFile, data, 0600); err != nil {
 		t.Fatal(err)
 	}
 	sd, err := windows.GetNamedSecurityInfo(p.EnvironmentFile, windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION)

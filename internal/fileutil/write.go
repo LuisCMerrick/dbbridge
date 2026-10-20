@@ -8,16 +8,19 @@ import (
 )
 
 // WriteNew never follows or replaces an existing file, including a symlink.
-// The file and its directory entry are flushed before it returns.
-func WriteNew(path string, data []byte, mode fs.FileMode) (err error) {
+// The file and its directory entry are flushed before it returns. created
+// reports whether the file exists at path after the call because this call
+// created it: an error with created true (a failed directory sync) leaves a
+// complete file that the caller owns and must remove or keep explicitly.
+func WriteNew(path string, data []byte, mode fs.FileMode) (created bool, err error) {
 	f, err := openNewFile(path, mode)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if err = writeNewFile(f, data); err != nil {
-		return err
+		return false, err
 	}
-	return SyncDir(filepath.Dir(path))
+	return true, SyncDir(filepath.Dir(path))
 }
 
 func writeNewFile(f *os.File, data []byte) (err error) {

@@ -11,7 +11,7 @@ import (
 	"dbbridge/internal/fileutil"
 )
 
-func writeEnvironmentFile(p Plan, data []byte) error {
+func writeEnvironmentFile(p Plan, data []byte) (bool, error) {
 	return fileutil.WriteNew(p.EnvironmentFile, data, 0600)
 }
 

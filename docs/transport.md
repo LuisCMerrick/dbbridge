@@ -78,7 +78,7 @@ When a buffer is full the session waits up to `backpressure_timeout` for space; 
 
 ## 4. Failure detection, failover and recovery
 
-**Failure detection.** Both sides send heartbeats every `heartbeat`. A carrier with no progress for `failure_detect_timeout` is considered lost. Over HTTP/2 the node also sends a PING every `heartbeat` and closes the connection after 5 s without an answer.
+**Failure detection.** Both sides send heartbeats every `heartbeat`. A carrier with no progress for `failure_detect_timeout` is considered lost. Progress is session traffic (an event or WebSocket message bound to the session, or a data frame still arriving); SSE comments and fields the parser ignores, such as keep-alive comments inserted by a proxy, do not count. Over HTTP/2 the node also sends a PING every `heartbeat` and closes the connection after 5 s without an answer.
 
 **Failover.** Each peer has endpoints ordered by `priority`. The ingress probes them every `failover.healthcheck_interval`; `unhealthy_threshold` failures make an endpoint `UNHEALTHY`, `healthy_threshold` successes make it usable again. New sessions use the best usable endpoint; when a preferred endpoint recovers, only new sessions move to it (`failback: new_sessions`).
 

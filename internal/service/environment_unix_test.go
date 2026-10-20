@@ -56,7 +56,7 @@ func TestProtectHomeFollowsSymlinks(t *testing.T) {
 	if err != nil || !strings.HasPrefix(home+"/", "/home/") {
 		t.Skip("home directory is not under /home")
 	}
-	target, err := os.MkdirTemp(home, ".dbbridge-audit-")
+	target, err := os.MkdirTemp(home, ".dbbridge-test-")
 	if err != nil {
 		t.Skip(err)
 	}
