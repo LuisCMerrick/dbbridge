@@ -1,0 +1,8 @@
+bin/
+dist/
+
+# Secrets: generated tokens, credential snapshots and stray secret files.
+shared.token
+*.token
+*.secret
+*.service-env.json

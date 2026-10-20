@@ -1,0 +1,34 @@
+<!-- Optional WinSW wrapper; download the wrapper from its official release and
+     verify its published checksum before use.
+     gen-config writes peer.yaml and shared.token with a protected DACL (SYSTEM,
+     Administrators and the creating user only), so LocalService cannot read them
+     by default. Grant read access once, from an elevated prompt, e.g.:
+       icacls "%BASE%\peer.yaml"    /grant "NT AUTHORITY\LOCAL SERVICE:(R)"
+       icacls "%BASE%\shared.token" /grant "NT AUTHORITY\LOCAL SERVICE:(R)"
+     (repeat for every token, credentials and TLS file the config references),
+     and grant Modify on %BASE%\logs. The built-in installer (dbbridge.exe install,
+     with service-user LocalService) needs the same grants.
+     Use either this wrapper or the built-in installer for a service name, not
+     both: SCM service names are case-insensitive, so the id "DBBridge" below
+     and the installer default "dbbridge" are the same service. -->
+<service>
+  <id>DBBridge</id>
+  <name>DBBridge</name>
+  <description>DBBridge TCP transport</description>
+  <executable>%BASE%\dbbridge.exe</executable>
+  <arguments>run --config "%BASE%\peer.yaml" --log-format json</arguments>
+  <workingdirectory>%BASE%</workingdirectory>
+  <serviceaccount><username>NT AUTHORITY\LocalService</username></serviceaccount>
+  <logpath>%BASE%\logs</logpath>
+  <log mode="roll-by-size"><sizeThreshold>10240</sizeThreshold><keepFiles>4</keepFiles></log>
+  <stoptimeout>60sec</stoptimeout>
+  <!-- dbbridge exits with 78 on a configuration or credential error, which a
+       restart cannot fix. WinSW does not distinguish exit codes, so restart
+       a bounded number of times and then stay stopped. (The built-in
+       installer instead reports exit code 78 to the SCM and is not
+       restarted on configuration errors.) -->
+  <onfailure action="restart" delay="5 sec"/>
+  <onfailure action="restart" delay="30 sec"/>
+  <onfailure action="none"/>
+  <resetfailure>1 hour</resetfailure>
+</service>

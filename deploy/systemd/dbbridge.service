@@ -1,0 +1,63 @@
+# Static example; `dbbridge install --service-user dbbridge` generates an equivalent unit.
+# Create the account first (e.g. `useradd --system --no-create-home dbbridge`) and
+# make /etc/dbbridge, peer.yaml and any token files readable by it (0640 root:dbbridge).
+# Keep credential files under /etc/dbbridge: ProtectHome/PrivateTmp hide /home,
+# /root, /run/user and /tmp from the service.
+[Unit]
+Description=DBBridge TCP transport
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+[Service]
+Type=notify
+NotifyAccess=main
+User=dbbridge
+Group=dbbridge
+WorkingDirectory=/etc/dbbridge
+# Optional; prefer token_file/credentials_file. If used, keep it 0600 root:root.
+# Values set here take precedence over an install-time --env-file snapshot.
+EnvironmentFile=-/etc/dbbridge/environment
+ExecStart=/usr/local/bin/dbbridge run --config /etc/dbbridge/peer.yaml --service-name dbbridge --log-format json
+# `systemctl reload dbbridge` re-reads token files and the auth/token settings
+# immediately (they are also re-read every auth.reload_interval). Tokens from
+# environment variables, including EnvironmentFile, only change on restart.
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5s
+# Exit status 78 (EX_CONFIG) means a configuration or credential error; a
+# restart cannot fix it, so systemd does not retry.
+RestartPreventExitStatus=78
+TimeoutStartSec=30s
+KillSignal=SIGTERM
+# transport.shutdown_timeout (30s) + teardown budget (15s) + 15s margin.
+# Raise it together with shutdown_timeout.
+TimeoutStopSec=60s
+NoNewPrivileges=true
+UMask=0077
+# At least 4 * limits.max_sessions + 1024 (the generated unit computes it).
+LimitNOFILE=8192
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target
