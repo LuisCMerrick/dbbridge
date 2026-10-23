@@ -14,7 +14,7 @@ import (
 func (s *Server) handleSessionRoutes(w http.ResponseWriter, r *http.Request) {
 	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/v1/sessions/"), "/")
 	if len(parts) < 1 || len(parts) > 2 {
-		writeJSONError(w, 404, protocol.ErrSessionNotFound, "not found", false, false)
+		reject(w, r, 404, protocol.ErrSessionNotFound, "not found", false, false)
 		return
 	}
 	action := ""
@@ -37,16 +37,16 @@ func (s *Server) handleSessionRoutes(w http.ResponseWriter, r *http.Request) {
 	}
 	sess := s.registry.GetAny(parts[0])
 	if sess == nil || sess.OwnerPeer != peer {
-		writeJSONError(w, 404, protocol.ErrSessionNotFound, "not found", true, false)
+		reject(w, r, 404, protocol.ErrSessionNotFound, "not found", true, false)
 		return
 	}
 	if !auth.ValidateSessionToken(sess.SessionToken, r.Header.Get(protocol.HeaderSessionToken)) {
-		writeJSONError(w, 401, protocol.ErrUnauthorized, "invalid session credentials", false, false)
+		reject(w, r, 401, protocol.ErrUnauthorized, "invalid session credentials", false, false)
 		return
 	}
 	if s.auth.AuthorizeTarget(peer, sess.TargetID) != nil {
 		sess.CloseWithReason(protocol.ErrTargetForbidden)
-		writeJSONError(w, 403, protocol.ErrTargetForbidden, "authorization revoked", true, false)
+		reject(w, r, 403, protocol.ErrTargetForbidden, "authorization revoked", true, false)
 		return
 	}
 	if !s.bindCred(peer, credential(r)) {
@@ -59,19 +59,19 @@ func (s *Server) handleSessionRoutes(w http.ResponseWriter, r *http.Request) {
 	}
 	ep, e := protocol.Offset(r.URL.Query().Get("epoch"))
 	if e != nil || ep != sess.GetEpoch() {
-		writeJSONError(w, 409, protocol.ErrStaleEpoch, "epoch", false, false)
+		reject(w, r, 409, protocol.ErrStaleEpoch, "epoch", false, false)
 		return
 	}
 	switch action {
 	case "events":
 		if sess.GetTransportMode() != "http-sse" {
-			writeJSONError(w, 409, protocol.ErrTransportMismatch, "mode", false, false)
+			reject(w, r, 409, protocol.ErrTransportMismatch, "mode", false, false)
 			return
 		}
 		s.handleSSEEvents(w, r, sess)
 	case "up":
 		if sess.GetTransportMode() != "http-sse" {
-			writeJSONError(w, 409, protocol.ErrTransportMismatch, "mode", false, false)
+			reject(w, r, 409, protocol.ErrTransportMismatch, "mode", false, false)
 			return
 		}
 		s.handleUp(w, r, sess)
@@ -86,7 +86,7 @@ func (s *Server) handleSessionRoutes(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, 200, protocol.DeleteSessionResponse{SessionID: sess.ID, InstanceID: sess.InstanceID, Epoch: strconv.FormatUint(sess.GetEpoch(), 10), Closed: true})
 	default:
-		writeJSONError(w, 404, protocol.ErrBadFrame, "action", false, false)
+		reject(w, r, 404, protocol.ErrBadFrame, "action", false, false)
 	}
 }
 
@@ -113,6 +113,7 @@ func (s *Server) handleAck(w http.ResponseWriter, r *http.Request, sess *session
 func (s *Server) handleFin(w http.ResponseWriter, r *http.Request, sess *session.Session) {
 	ep, _ := protocol.Offset(r.URL.Query().Get("epoch"))
 	if e := sess.CheckStream(ep, r.Header.Get(protocol.HeaderStreamID), true); e != nil {
+		closeIfUnread(w, r)
 		s.writeSessionError(w, sess, e)
 		return
 	}

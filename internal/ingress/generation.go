@@ -315,7 +315,7 @@ func (s *ingressSession) watchActivity(g *generation) {
 				blockedAt = s.remoteBlockedAt
 			}
 			controlRecent := !s.lastControl.IsZero() && time.Since(s.lastControl) < detect
-			upPending := g.mode == "ws" && s.g == g && g.active && g.upSentOffset > s.upAck && !g.upPendingSince.IsZero()
+			upPending := s.g == g && g.active && g.upSentOffset > s.upAck && !g.upPendingSince.IsZero()
 			upSince, remoteRxBlocked := g.upPendingSince, s.remoteRxBlocked
 			s.mu.Unlock()
 			if upPending {

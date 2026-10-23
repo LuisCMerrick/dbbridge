@@ -13,6 +13,7 @@ func TestMinCodecBudgetFollowsTransports(t *testing.T) {
 		"egress ws and sse": {Config{HTTP: HTTPConfig{Enabled: true, AllowedTransports: []string{"ws", "http-sse"}}}, sse},
 		"egress ws only":    {Config{HTTP: HTTPConfig{Enabled: true, AllowedTransports: []string{"ws"}}}, ws},
 		"ws with listeners": {Config{HTTP: HTTPConfig{Enabled: true, AllowedTransports: []string{"ws"}}, Listeners: []ListenerConfig{{ID: "l"}}}, sse},
+		"sse bidirectional": {Config{HTTP: HTTPConfig{Enabled: true, AllowedTransports: []string{"ws", "http-sse"}}, Listeners: []ListenerConfig{{ID: "l"}}}, sse + frame + 56},
 		"ws with peers":     {Config{HTTP: HTTPConfig{Enabled: true, AllowedTransports: []string{"ws"}}, Peers: []PeerConfig{{ID: "p"}}}, sse},
 		"ingress only":      {Config{}, sse},
 	} {

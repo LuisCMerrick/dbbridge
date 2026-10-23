@@ -101,6 +101,7 @@ func (s *Server) handleUp(w http.ResponseWriter, r *http.Request, sess *session.
 	ep, _ := protocol.Offset(r.URL.Query().Get("epoch"))
 	stream := r.Header.Get(protocol.HeaderStreamID)
 	if e := sess.CheckStream(ep, stream, true); e != nil {
+		closeIfUnread(w, r)
 		s.writeSessionError(w, sess, e)
 		return
 	}

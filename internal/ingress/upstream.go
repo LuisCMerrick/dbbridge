@@ -86,6 +86,14 @@ func (s *ingressSession) readLocal() {
 		// wait is bounded by recovery.grace and the deadline timer, not by
 		// backpressure_timeout.
 		recovering := !s.closed.Load() && (s.g == nil || !s.g.active) && !s.deadline.IsZero()
+		if maxFrame > baseFrame && baseFrame > 0 {
+			winRem := int64(s.limits.UpWindowBytes) - int64(s.upNext-s.upAck)
+			bufRem := s.m.cfg.Transport.BufferPerDirection - s.used
+			avail := min(winRem, bufRem)
+			if avail >= int64(baseFrame) && avail < int64(maxFrame) {
+				maxFrame = int(avail)
+			}
+		}
 		can := !s.closed.Load() && s.g != nil && s.g.active && len(s.frames) < s.limits.UpMaxInflightFrames && s.upNext-s.upAck+uint64(maxFrame) <= uint64(s.limits.UpWindowBytes) && s.used+int64(maxFrame) <= s.m.cfg.Transport.BufferPerDirection
 		s.mu.Unlock()
 		if recovering {
@@ -141,7 +149,18 @@ func (s *ingressSession) readLocal() {
 				s.fault(nil, observability.FaultUpstream, transport.ErrProtocol, true)
 				return
 			}
-			f := &retainedChunk{offset: s.upNext, data: buf[:n], cost: int64(capacity)}
+			data := buf[:n]
+			cost := int64(capacity)
+			if n*4 <= capacity {
+				// As in egress FinishDownRead, compact short reads and return
+				// the unused reservation so small queries do not pin full-frame
+				// allocations in the window and recovery lease.
+				data = make([]byte, n)
+				copy(data, buf[:n])
+				s.m.cfg.Resources.Payload.Put(int64(capacity - n))
+				cost = int64(n)
+			}
+			f := &retainedChunk{offset: s.upNext, data: data, cost: cost}
 			s.frames = append(s.frames, f)
 			s.used += f.cost
 			s.retainedBytes.Add(f.cost)
@@ -233,6 +252,15 @@ func (s *ingressSession) send(g *generation) {
 						s.wake()
 						s.mu.Unlock()
 					}()
+					end := f.offset + uint64(len(f.data))
+					markPending := func() {
+						if g.active && !s.closed.Load() && end > s.upAck {
+							g.upSentOffset = max(g.upSentOffset, end)
+							if g.upPendingSince.IsZero() {
+								g.upPendingSince = time.Now()
+							}
+						}
+					}
 					for attempt := 0; g.ctx.Err() == nil; attempt++ {
 						r, e := g.c.SendUpFrame(g.ctx, s.sid, s.token, s.owner, g.ep, f.offset, f.data, down, confirmed)
 						if e == nil {
@@ -240,6 +268,7 @@ func (s *ingressSession) send(g *generation) {
 							s.mu.Lock()
 							if s.g == g && pe == nil {
 								pe = s.advanceUpLocked(off)
+								markPending()
 								s.wake()
 							}
 							s.mu.Unlock()
@@ -253,6 +282,11 @@ func (s *ingressSession) send(g *generation) {
 						// retried on the same carrier; the carrier did not fail.
 						// failure_detect_timeout still bounds the wait for the ACK.
 						if safeRetry(e) || localResourceError(e) {
+							s.mu.Lock()
+							if s.g == g {
+								markPending()
+							}
+							s.mu.Unlock()
 							if pause(g.ctx, attempt, e) == nil {
 								continue
 							}

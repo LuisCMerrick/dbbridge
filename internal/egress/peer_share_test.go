@@ -163,6 +163,17 @@ func TestIngressCodecReserveKeepsOneEgressFrame(t *testing.T) {
 	}
 }
 
+func TestIngressCodecReserveCoversLargeSSEFrame(t *testing.T) {
+	cfg := testCfg(t, nil)
+	cfg.Transport.MaxFrameSize = 1 << 20
+	cfg.Listeners = []config.ListenerConfig{{ID: "l1", Listen: "127.0.0.1:0", Peer: "A"}}
+	cfg.Resources = resource.NewManager(256<<20, 32<<20, 32<<20, 8)
+	applyIngressCodecReserve(cfg)
+	if got, want := cfg.Resources.IngressCodecReserve(), sseDownCost(1<<20); got != want {
+		t.Fatalf("codec reserve %d, want %d", got, want)
+	}
+}
+
 // Downstream WS frames are charged their binary size, SSE frames their
 // Base64 event text.
 func TestDownstreamCodecChargePerTransport(t *testing.T) {

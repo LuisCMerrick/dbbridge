@@ -23,7 +23,7 @@ func fatalError(e error) bool {
 	}
 	var r *transport.RemoteError
 	if errors.As(e, &r) {
-		return r.Trusted && (r.SessionClosed || r.Status == 401 || r.Status == 403 || r.Code == protocol.ErrBadAck || r.Code == protocol.ErrBadFrame || r.Code == protocol.ErrFrameConflict || r.Code == protocol.ErrIdempotencyConflict || r.Code == protocol.ErrRecoveryDisabled || r.Code == protocol.ErrRecoveryUnsupported || r.Code == protocol.ErrReplayTooOld)
+		return r.Trusted && (r.SessionClosed || r.Status == 401 || r.Status == 403 || r.Code == protocol.ErrBadAck || r.Code == protocol.ErrBadFrame || r.Code == protocol.ErrFrameConflict || r.Code == protocol.ErrFrameTooLarge || r.Code == protocol.ErrIdempotencyConflict || r.Code == protocol.ErrRecoveryDisabled || r.Code == protocol.ErrRecoveryUnsupported || r.Code == protocol.ErrReplayTooOld || r.Code == protocol.ErrProtocolMismatch || r.Code == protocol.ErrNodeMismatch || r.Code == protocol.ErrTransportMismatch || r.Code == protocol.ErrTransportUnsupported)
 	}
 	return false
 }
@@ -120,10 +120,12 @@ func reasonCategory(e error) string {
 			return "unauthorized"
 		case protocol.ErrTargetForbidden:
 			return "forbidden"
-		case protocol.ErrBadAck:
+		case protocol.ErrBadAck, protocol.ErrReplayTooOld:
 			return "offset"
-		case protocol.ErrFrameConflict:
+		case protocol.ErrFrameConflict, protocol.ErrBadFrame, protocol.ErrBadDigest, protocol.ErrFrameTooLarge, protocol.ErrIdempotencyConflict, protocol.ErrProtocolMismatch, protocol.ErrNodeMismatch, protocol.ErrTransportMismatch, protocol.ErrTransportUnsupported, protocol.ErrRecoveryDisabled, protocol.ErrRecoveryUnsupported:
 			return "protocol"
+		case protocol.ErrInstanceMismatch:
+			return "instance"
 		case protocol.ErrQuotaExceeded:
 			return "quota"
 		case protocol.ErrDialFailed:

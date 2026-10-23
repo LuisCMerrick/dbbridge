@@ -4,6 +4,17 @@
 
 The version of a build is set when it is built (`dbbridge version`).
 
+## [1.4.26.10.23] - 2026-10-23
+
+Protocol 1.4. Maintenance and protocol hardening release.
+
+- **SSE and carrier liveness.** SSE comments (such as proxy keep-alives) no longer count as session progress or consume event line limits. `http-sse` upstream frames now enforce `failure_detect_timeout` and remote backpressure timeouts while waiting for acknowledgement, matching WebSocket behaviour.
+- **Connection pooling and flow control.** Outbound SSE subscriptions shard across up to `transport.h2_pool_size` (1–64) HTTP clients per endpoint. Ingress short reads compact their buffer allocation so small frames do not hold full-frame payload and recovery-retention budgets, and dynamic frame sizing clamps to the remaining send window.
+- **Budgets and admission.** Bidirectional nodes size `codec_buffer_limit` and the local ingress codec reserve to cover SSE frame decoding alongside egress traffic. Egress session routes close HTTP/1.1 connections when rejecting requests before reading their body.
+- **Configuration and credential reload.** Inline credential reloads reject added or duplicate `peers` entries (which require a restart). Inbound quota validation uses saturating addition. Disabled inline identities' token files are not required at service installation. `gen-config` rolls back newly created files if directory sync or pair publication fails.
+- **Observability and service management.** Added `dbb_ingress_faults_total{source,reason}` and expanded terminal/fault reason classification for deterministic protocol refusals. Windows service installation marks and verifies ownership of the Application Event Log source.
+- **Release packaging.** `scripts/build-release.sh` bundles `third_party/MODULES.txt` and dependency license files into release archives.
+
 ## [1.4.26.10.20] - 2026-10-20
 
 First release. Protocol 1.4.

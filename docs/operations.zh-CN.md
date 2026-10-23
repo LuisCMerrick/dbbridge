@@ -212,7 +212,7 @@ dbbridge version <version> (commit: <commit>, built: <date>, runtime: <go versio
 
 ## 6. 日志与事件
 
-日志输出到 stderr（`--log-format text` 或 `json`）：在 systemd 下进入 journal（`journalctl -u <name>`），在内置 Windows 服务下进入“应用程序”事件日志、事件源为服务名，在 WinSW 下写入其日志目录。与配置和启动相关的记录带有 `code=DBB-CFG-0xx`。
+运行日志输出到 stdout（`--log-format text` 或 `json`），命令行错误与警告输出到 stderr：在 systemd 下均进入 journal（`journalctl -u <name>`），在内置 Windows 服务下进入“应用程序”事件日志、事件源为服务名，在 WinSW 下写入其日志目录。与配置和启动相关的记录带有 `code=DBB-CFG-0xx`。
 
 | 消息 | 级别 | 含义 |
 |---|---|---|

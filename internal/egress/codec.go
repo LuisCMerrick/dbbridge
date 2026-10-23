@@ -44,9 +44,25 @@ func maxCodecCharge(c *config.Config) int64 {
 	return charge
 }
 
-// applyIngressCodecReserve keeps an eighth of Codec (at least one WS frame of
-// the local ingress) for the local ingress role of a bidirectional node, so
-// remote peers cannot stall local clients' encode and WS reads. The reserve
+// ingressCodecCharge is the largest single codec reservation a local ingress
+// session may need for one configured max_frame_size frame.
+func ingressCodecCharge(c *config.Config) int64 {
+	n := configuredMaxFrame(c)
+	sse := c.Transport.Protocol != "ws"
+	for _, p := range c.Peers {
+		if p.Transport != nil && p.Transport.Protocol != "" && p.Transport.Protocol != "ws" {
+			sse = true
+		}
+	}
+	if sse {
+		return sseDownCost(n)
+	}
+	return int64(n) + protocol.WSBinaryHeaderLen
+}
+
+// applyIngressCodecReserve keeps at least an eighth of Codec and one maximal
+// local ingress frame for the local ingress role of a bidirectional node, so
+// remote peers cannot stall local clients' encode, WS or SSE reads. The reserve
 // never shrinks the egress part below one maximal egress charge. Nodes
 // without local listeners reserve nothing; a reserve already set is kept.
 func applyIngressCodecReserve(c *config.Config) {
@@ -55,7 +71,7 @@ func applyIngressCodecReserve(c *config.Config) {
 		return
 	}
 	limit := res.Codec.Limit()
-	floor := max(limit/8, int64(configuredMaxFrame(c))+protocol.WSBinaryHeaderLen)
+	floor := max(limit/8, ingressCodecCharge(c))
 	floor = min(floor, limit-maxCodecCharge(c))
 	if floor > 0 {
 		res.SetIngressCodecReserve(floor)

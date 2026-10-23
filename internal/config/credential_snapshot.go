@@ -142,11 +142,19 @@ func (s CredentialSource) readInline() ([]InboundPeerConfig, []PeerConfig, error
 		return nil, nil, WithCode(CodeCredential, errors.New("auth.credentials_file was added to the configuration; switching to a credentials file requires a restart"))
 	}
 	byID := make(map[string]PeerConfig, len(c.Peers))
-	for _, p := range c.Peers {
+	for i, p := range c.Peers {
+		if p.ID == "" {
+			return nil, nil, WithCode(CodeCredential, fmt.Errorf("peers[%d].id cannot be empty", i))
+		}
+		if _, dup := byID[p.ID]; dup {
+			return nil, nil, WithCode(CodeCredential, fmt.Errorf("duplicate peer id: %s", p.ID))
+		}
 		byID[p.ID] = p
 	}
+	known := make(map[string]bool, len(s.peers))
 	peers := make([]PeerConfig, 0, len(s.peers))
 	for _, old := range s.peers {
+		known[old.ID] = true
 		p, ok := byID[old.ID]
 		if !ok {
 			return nil, nil, WithCode(CodeCredential, fmt.Errorf("peers[%s] was removed from the configuration; adding or removing peers requires a restart", old.ID))
@@ -159,6 +167,11 @@ func (s CredentialSource) readInline() ([]InboundPeerConfig, []PeerConfig, error
 			next.Token = old.Token
 		}
 		peers = append(peers, next)
+	}
+	for _, p := range c.Peers {
+		if !known[p.ID] {
+			return nil, nil, WithCode(CodeCredential, fmt.Errorf("peers[%s] was added to the configuration; adding or removing peers requires a restart", p.ID))
+		}
 	}
 	return c.Auth.InboundPeers, peers, nil
 }

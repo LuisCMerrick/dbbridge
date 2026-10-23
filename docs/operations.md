@@ -212,7 +212,7 @@ Normal closes and closes during node shutdown are not counted as failures.
 
 ## 6. Logs and events
 
-Logs go to stderr (`--log-format text` or `json`): under systemd to the journal (`journalctl -u <name>`), under the built-in Windows service to the Application Event Log with the service name as source, under WinSW to the wrapper's log directory. Records related to configuration and startup carry `code=DBB-CFG-0xx`.
+Logs go to stdout (`--log-format text` or `json`) while CLI errors and warnings go to stderr: under systemd both go to the journal (`journalctl -u <name>`), under the built-in Windows service to the Application Event Log with the service name as source, under WinSW to the wrapper's log directory. Records related to configuration and startup carry `code=DBB-CFG-0xx`.
 
 | Message | Level | Meaning |
 |---|---|---|

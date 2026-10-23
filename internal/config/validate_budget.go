@@ -52,7 +52,10 @@ const sessionTombstoneMetadata = 8 << 10
 //     frame + header, and a WS text control message 16 KiB.
 //
 // A node whose egress allows only WebSocket and that has no local ingress
-// role (no listeners or outbound peers) needs only the WS figure.
+// role (no listeners or outbound peers) needs only the WS figure. A
+// bidirectional node (http.enabled with local listeners) needs room for one
+// maximal egress charge plus the local ingress reserve (at least one local WS
+// frame) so remote peers cannot starve local clients.
 func (c *Config) minCodecBudget() int64 {
 	frame := int64(c.Transport.MaxFrameSize)
 	need := max(2*frame+wsBinaryHeaderLen, 16<<10)
@@ -65,6 +68,17 @@ func (c *Config) minCodecBudget() int64 {
 	}
 	if sse {
 		need = max(need, 6*frame+16384)
+	}
+	if c.HTTP.Enabled && len(c.Listeners) > 0 {
+		egress := max(2*frame+wsBinaryHeaderLen, int64(16<<10))
+		egressSSE := len(c.HTTP.AllowedTransports) == 0
+		for _, mode := range c.HTTP.AllowedTransports {
+			egressSSE = egressSSE || mode == "http-sse"
+		}
+		if egressSSE {
+			egress = max(egress, 6*frame+16384)
+		}
+		need = max(need, egress+frame+wsBinaryHeaderLen)
 	}
 	return need
 }
