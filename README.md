@@ -47,7 +47,7 @@ Details: [Transport](docs/transport.md).
 | Linux amd64 / arm64 | ✓ | systemd |
 | Windows amd64 | ✓ | Windows service (built in), or WinSW |
 
-Building from source requires Go 1.27.2 or later. Nodes speak DBBridge protocol 1.4.
+Building from source requires Go 1.27.3 or later. Nodes speak DBBridge protocol 1.4.
 
 ## Quick start
 

@@ -56,7 +56,7 @@ Windows 上：执行 `Get-FileHash .\dbbridge-<version>-windows-amd64.zip -Algor
 
 ## 3. 从源码构建
 
-需要 Go **1.27.2** 或更新版本（取自 `go.mod`），不需要 cgo。
+需要 Go **1.27.3** 或更新版本（取自 `go.mod`），不需要 cgo。
 
 ```bash
 go build -trimpath -o bin/dbbridge ./cmd/dbbridge

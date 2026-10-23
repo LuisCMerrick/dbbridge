@@ -159,8 +159,10 @@ func (s *Server) runWSSession(c *websocket.Conn, sess *session.Session, ep uint6
 	defer cancel()
 	defer c.Close()
 	writerDone := make(chan struct{})
-	if sess.SetStreamCancel(ep, stream, streamCancel(sess, cancel, writerDone)) != nil {
-		return
+	if err := sess.SetStreamCancel(ep, stream, streamCancel(sess, cancel, writerDone)); err != nil {
+		if !errors.Is(err, session.ErrSessionClosed) || sess.GetEpoch() != ep || sess.CurrentStreamID() != stream {
+			return
+		}
 	}
 	defer sess.DropTransport(ep)
 	s.wg.Add(2) // called from a counted handler

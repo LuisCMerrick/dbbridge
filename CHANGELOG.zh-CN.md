@@ -12,8 +12,8 @@
 - **连接池与流控。** 出站 SSE 订阅按每个端点最多 `transport.h2_pool_size`（1–64）个 HTTP 客户端分片。Ingress 本地短读会压缩底层切片并归还多余的负载与恢复保留配额，动态帧大小在窗口尾端自动钳制到剩余发送窗口。
 - **预算与准入控制。** 双向节点的 `codec_buffer_limit` 下限与本地 Ingress 编解码预留量同时覆盖 SSE 帧解码与 Egress 最大帧开销。Egress 会话路由在读取请求体前拒绝 HTTP/1.1 请求时显式关闭连接。
 - **配置与凭据热重载。** 内联凭据重载拒绝新增或重复的 `peers` 条目（增删对端需重启）。入站配额求和采用饱和加法防止整数溢出。服务安装预检不再要求已禁用内联身份的令牌文件存在。`gen-config` 在目录同步或配对发布失败时回滚新建文件。
-- **可观测性与服务管理。** 新增 `dbb_ingress_faults_total{source,reason}` 指标，补齐确定性协议拒绝码的致命判定与原因分类。Windows 服务安装为事件日志源写入并校验归属标记。
-- **发布打包。** `scripts/build-release.sh` 在发布归档中包含所链接依赖的许可证文件与模块清单（`third_party/MODULES.txt`）。
+- **可观测性与服务管理。** 新增 `dbb_ingress_faults_total{source,reason}` 指标，补齐确定性协议拒绝码的致命判定与原因分类。在 HTTP 101 升级切换窗口内关闭的 WebSocket 会话仍会在关闭载体前下发终态 `error` 通知。Windows 服务安装为事件日志源写入并校验归属标记。
+- **发布打包与工具链。** `scripts/build-release.sh` 在发布归档中包含所链接依赖的许可证文件与模块清单（`third_party/MODULES.txt`）。最低 Go 工具链版本升至 1.27.3（修复标准库 `GO-2026-6809`）。
 
 ## [1.4.26.10.20] - 2026-10-20
 

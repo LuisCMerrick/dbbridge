@@ -56,7 +56,7 @@ Builds are reproducible: the same source tree, Go toolchain and `SOURCE_DATE_EPO
 
 ## 3. Building from source
 
-Requires Go **1.27.2** or later (from `go.mod`). No cgo is needed.
+Requires Go **1.27.3** or later (from `go.mod`). No cgo is needed.
 
 ```bash
 go build -trimpath -o bin/dbbridge ./cmd/dbbridge

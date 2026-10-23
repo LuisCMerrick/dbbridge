@@ -47,7 +47,7 @@ DBBridge 对协议完全透明：逐字节原样转发，从不解析或改写 S
 | Linux amd64 / arm64 | ✓ | systemd |
 | Windows amd64 | ✓ | Windows 服务（内置），或 WinSW |
 
-从源码构建需要 Go 1.27.2 或更新版本。节点使用 DBBridge 协议 1.4。
+从源码构建需要 Go 1.27.3 或更新版本。节点使用 DBBridge 协议 1.4。
 
 ## 快速开始
 
