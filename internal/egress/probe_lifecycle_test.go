@@ -12,7 +12,7 @@ import (
 
 func TestInvalidNegotiationRejectedBeforeDial(t *testing.T) {
 	s, _, _, count := boundaryServer(t)
-	q := protocol.CreateSessionRequest{ProtocolVersion: "1.4", IngressInstanceID: "ai", CreateRequestID: "invalid-limits", TargetID: "db", Transport: protocol.TransportMode{Mode: "ws"}, Recovery: protocol.RecoveryNegotiation{}, Limits: protocol.SessionLimits{MaxFrameSize: 1024, UpMaxInflightFrames: 8, UpWindowBytes: 1, DownBufferBytes: 1024}}
+	q := protocol.CreateSessionRequest{ProtocolVersion: "1.5", IngressInstanceID: "ai", CreateRequestID: "invalid-limits", TargetID: "db", Transport: protocol.TransportMode{Mode: "ws"}, Recovery: protocol.RecoveryNegotiation{}, Limits: protocol.SessionLimits{MaxFrameSize: 1024, UpMaxInflightFrames: 8, UpWindowBytes: 1, DownBufferBytes: 1024}}
 	b, _ := json.Marshal(q)
 	r := httptest.NewRequest("POST", "/v1/sessions", bytes.NewReader(b))
 	r.Header.Set("Authorization", "Bearer token")
@@ -36,7 +36,7 @@ func TestProbeKeepsReservedControlAdmission(t *testing.T) {
 		t.Fatal("fixture metadata")
 	}
 	defer c.Resources.Metadata.Put(c.Resources.Metadata.Limit())
-	q, _ := json.Marshal(protocol.ProbeRequest{ProtocolVersion: "1.4", ExpectedNodeID: "B", Nonce: "reserved-control-probe"})
+	q, _ := json.Marshal(protocol.ProbeRequest{ProtocolVersion: "1.5", ExpectedNodeID: "B", Nonce: "reserved-control-probe"})
 	r := httptest.NewRequest("POST", "/v1/peer/probe", bytes.NewReader(q))
 	r.Header.Set("Authorization", "Bearer token")
 	w := httptest.NewRecorder()
@@ -49,7 +49,7 @@ func TestGraceMillisecondsOverflow(t *testing.T) {
 	s, c, reg, _ := boundaryServer(t)
 	c.Transport.Recovery.Enabled = true
 	c.Transport.Recovery.Grace = time.Second
-	q := protocol.CreateSessionRequest{ProtocolVersion: "1.4", IngressInstanceID: "ai", CreateRequestID: "overflow-grace", TargetID: "db", Transport: protocol.TransportMode{Mode: "ws"}, Recovery: protocol.RecoveryNegotiation{Enabled: true, GraceMs: 9223372036854775807}, Limits: protocol.SessionLimits{MaxFrameSize: 1024, UpMaxInflightFrames: 8, UpWindowBytes: 1024, DownBufferBytes: 1024}}
+	q := protocol.CreateSessionRequest{ProtocolVersion: "1.5", IngressInstanceID: "ai", CreateRequestID: "overflow-grace", TargetID: "db", Transport: protocol.TransportMode{Mode: "ws"}, Recovery: protocol.RecoveryNegotiation{Enabled: true, GraceMs: 9223372036854775807}, Limits: protocol.SessionLimits{MaxFrameSize: 1024, UpMaxInflightFrames: 8, UpWindowBytes: 1024, DownBufferBytes: 1024}}
 	b, _ := json.Marshal(q)
 	r := httptest.NewRequest("POST", "/v1/sessions", bytes.NewReader(b))
 	r.Header.Set("Authorization", "Bearer token")

@@ -134,36 +134,43 @@ func isLoopbackHost(host string) bool {
 // validatePeerTLS enforces the client TLS options of one peer. Endpoint URLs
 // must already be validated.
 func validatePeerTLS(p *PeerConfig, dir string, offline bool) error {
-	if !p.TLS.IsVerify() {
-		if p.TLS.CAFile != "" {
-			return fmt.Errorf("peers[%s].tls.ca_file cannot be combined with tls.verify: false", p.ID)
+	return validateClientTLS(&p.TLS, p.Endpoints, "peers["+p.ID+"]", "endpoint", dir, offline)
+}
+
+// validateClientTLS enforces client TLS options (verify, ca_file) for the
+// endpoints they apply to; prefix names the section in messages. It resolves
+// ca_file to an absolute path.
+func validateClientTLS(t *TLSClientConfig, eps []EndpointConfig, prefix, kind, dir string, offline bool) error {
+	if !t.IsVerify() {
+		if t.CAFile != "" {
+			return fmt.Errorf("%s.tls.ca_file cannot be combined with tls.verify: false", prefix)
 		}
-		if !p.TLS.AllowInsecureSkipVerify {
-			for _, ep := range p.Endpoints {
+		if !t.AllowInsecureSkipVerify {
+			for _, ep := range eps {
 				u, err := url.Parse(ep.URL)
 				if err != nil {
 					return err
 				}
 				if u.Scheme == "https" && !isLoopbackHost(u.Hostname()) {
-					return fmt.Errorf("peers[%s].tls.verify: false for non-loopback endpoint %s requires tls.allow_insecure_skip_verify: true", p.ID, ep.ID)
+					return fmt.Errorf("%s.tls.verify: false for non-loopback %s %s requires tls.allow_insecure_skip_verify: true", prefix, kind, ep.ID)
 				}
 			}
 		}
 	}
-	if p.TLS.CAFile == "" || offline {
+	if t.CAFile == "" || offline {
 		return nil
 	}
-	path := p.TLS.CAFile
+	path := t.CAFile
 	if !filepath.IsAbs(path) {
 		path = filepath.Join(dir, path)
 	}
 	data, err := readFileLimited(path, 1<<20, "tls.ca_file too large")
 	if err != nil {
-		return WithCode(CodeTLS, fmt.Errorf("peers[%s].tls.ca_file: %w", p.ID, err))
+		return WithCode(CodeTLS, fmt.Errorf("%s.tls.ca_file: %w", prefix, err))
 	}
 	if !x509.NewCertPool().AppendCertsFromPEM(data) {
-		return WithCode(CodeTLS, fmt.Errorf("peers[%s].tls.ca_file contains no PEM certificates", p.ID))
+		return WithCode(CodeTLS, fmt.Errorf("%s.tls.ca_file contains no PEM certificates", prefix))
 	}
-	p.TLS.CAFile = path
+	t.CAFile = path
 	return nil
 }

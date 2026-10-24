@@ -40,7 +40,7 @@ jobs:
           if [[ "$release_tag" =~ ^v[0-9] ]]; then
             release_version="${release_tag#v}"
           else
-            release_version="1.4.$(date -u +%y.%m.%d)"
+            release_version="1.5.$(date -u +%y.%m.%d)"
           fi
           # Reproducible builds: the build date and archive timestamps are
           # the commit time, not the wall clock.

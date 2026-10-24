@@ -26,7 +26,7 @@
 - SQL Server named instances are located through the SQL Browser service over UDP 1434, which DBBridge does not forward: give the instance a fixed TCP port and use it as the target address.
 - The database client connects to a local listener (for example `127.0.0.1:13306`). If the client verifies the database's TLS certificate, configure the expected server name in the client (for example the driver's host-name-in-certificate option), because the connection host is the loopback address.
 
-**Protocol.** Nodes speak DBBridge protocol 1.4. How the settings of the two nodes meet is described in [Transport §2](transport.md#2-negotiated-values).
+**Protocol.** Nodes speak DBBridge protocol 1.5. How the settings of the two nodes meet is described in [Transport §2](transport.md#2-negotiated-values).
 
 ## 2. Release packages and checksums
 
@@ -82,7 +82,7 @@ bash scripts/build-release.sh dist
 
 | Variable | Default | Effect |
 |---|---|---|
-| `DBB_VERSION` | `1.4.<yy.mm.dd>` of the source date (UTC) | Version embedded in the binary and package names |
+| `DBB_VERSION` | `1.5.<yy.mm.dd>` of the source date (UTC) | Version embedded in the binary and package names |
 | `DBB_COMMIT` | `source-<sha256 of the sources>` | Source identity shown by `dbbridge version` |
 | `SOURCE_DATE_EPOCH` | commit time of `HEAD` | Build date and archive timestamps |
 | `DBB_PLATFORMS` | `linux/amd64 linux/arm64 windows/amd64` | Space-separated `GOOS/GOARCH` list; other targets are unsupported |

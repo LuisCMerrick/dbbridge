@@ -28,7 +28,7 @@ func egrServer(t *testing.T, cfg *config.Config) (*Server, *httptest.Server) {
 
 func egrCreate(t *testing.T, url, token, id, target string) (int, protocol.ErrorResponse, protocol.CreateSessionResponse) {
 	t.Helper()
-	b, _ := json.Marshal(protocol.CreateSessionRequest{Limits: protocol.SessionLimits{MaxFrameSize: 1024, UpMaxInflightFrames: 8, UpWindowBytes: 2048, DownBufferBytes: 4096}, ProtocolVersion: "1.4", IngressInstanceID: "ai", CreateRequestID: id, TargetID: target, Transport: protocol.TransportMode{Mode: "http-sse"}})
+	b, _ := json.Marshal(protocol.CreateSessionRequest{Limits: protocol.SessionLimits{MaxFrameSize: 1024, UpMaxInflightFrames: 8, UpWindowBytes: 2048, DownBufferBytes: 4096}, ProtocolVersion: "1.5", IngressInstanceID: "ai", CreateRequestID: id, TargetID: target, Transport: protocol.TransportMode{Mode: "http-sse"}})
 	r, _ := http.NewRequest("POST", url+"/v1/sessions", bytes.NewReader(b))
 	r.Header.Set("Authorization", "Bearer "+token)
 	r.Header.Set(protocol.HeaderInstanceID, "bi")

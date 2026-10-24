@@ -95,14 +95,14 @@ func TestServeReturnsFatalBackgroundError(t *testing.T) {
 func TestResolveBuildInfoIsStable(t *testing.T) {
 	none := func() (*debug.BuildInfo, bool) { return nil, false }
 	v, c, d := resolveBuildInfo("", "unknown", "unknown", none)
-	if v != "1.4-dev" || c != "unknown" || d != "unknown" {
+	if v != "1.5-dev" || c != "unknown" || d != "unknown" {
 		t.Fatalf("got %s %s %s", v, c, d)
 	}
 	vcs := func() (*debug.BuildInfo, bool) {
 		return &debug.BuildInfo{Settings: []debug.BuildSetting{{Key: "vcs.revision", Value: "0123456789abcdef0123"}, {Key: "vcs.time", Value: "2026-10-01T00:00:00Z"}, {Key: "vcs.modified", Value: "true"}}}, true
 	}
 	v, c, d = resolveBuildInfo("", "unknown", "unknown", vcs)
-	if v != "1.4-dev" || c != "0123456789ab-dirty" || d != "2026-10-01T00:00:00Z" {
+	if v != "1.5-dev" || c != "0123456789ab-dirty" || d != "2026-10-01T00:00:00Z" {
 		t.Fatalf("got %s %s %s", v, c, d)
 	}
 	if v, c, _ = resolveBuildInfo("1.4.7", "abc", "x", vcs); v != "1.4.7" || c != "abc" {

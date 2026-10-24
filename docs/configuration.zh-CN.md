@@ -27,7 +27,7 @@
 
 - 配置文件是单个 YAML 文档，最大 4 MiB；凭据文件最大 1 MiB，CA 证书包最大 1 MiB。YAML 嵌套不超过 32 层。
 - 未知字段会被拒绝（`field "x" not found in config.http`）。
-- 类型严格校验：字符串必须是 YAML 字符串（不加引号的 `protocol_version: 1.4` 会被拒绝，应写 `"1.4"`），布尔值必须是 `true`/`false`，整数必须是整数。
+- 类型严格校验：字符串必须是 YAML 字符串（不加引号的 `protocol_version: 1.5` 会被拒绝，应写 `"1.5"`），布尔值必须是 `true`/`false`，整数必须是整数。
 - 显式 `null`（只写 `key:` 不给值，或写 `~`）会被拒绝。可选字段要使用默认值，请直接省略。
 - **尺寸**取值为整数字节数，或形如 `<数字>[ ]<单位>` 的字符串，单位为 `B`、`K`/`KB`/`KiB`、`M`/`MB`/`MiB`、`G`/`GB`/`GiB`（不区分大小写）。所有单位均按 1024 进制计算（`1MB` = `1MiB` = 1,048,576 字节）。不支持小数（`1.5MiB`）和 `T`。
 - **时长**取值为 Go 时长字符串（`200ms`、`1m30s`；单位 `h`、`m`、`s`、`ms`、`us`、`ns`，不支持 `d`），或表示秒数的 YAML 数值（`5`，`0.5` 即 500 ms）。负数、NaN、无穷大和溢出值会被拒绝。
@@ -44,14 +44,15 @@ node:        # 本节点身份
 http:        # 入站对端服务（Egress 角色）：HTTP、WebSocket、SSE
 admin:       # 回环地址上的 /healthz、/readyz、/metrics
 auth:        # 入站身份、目标 ACL、凭据文件
-peers:       # 出站对端（Ingress 角色）：endpoint、故障切换、TLS、令牌
+peers:       # 出站对端（Ingress 角色）：endpoint、故障切换、TLS、令牌；mode: reverse 时由对端连入
 listeners:   # 供数据库客户端连接的本地 TCP 入口
 targets:     # 本节点可以拨号的数据库（Egress 角色）
+reverse:     # 反向模式的数据库侧：主动连出隧道（§7.1）
 limits:      # 会话与 endpoint 上限
 transport:   # 载体、流控、会话恢复、预算、超时
 ```
 
-节点有 `listeners` 和 `peers` 时是 **Ingress**；`http.enabled: true` 且有 `targets` 时是 **Egress**；两者兼有时为**双向**节点。所有角色使用同一个二进制程序。
+节点有 `listeners` 和 `peers` 时是 **Ingress**；`http.enabled: true`（或 `reverse.enabled: true`）且有 `targets` 时是 **Egress**；两者兼有时为**双向**节点。所有角色使用同一个二进制程序。
 
 ## 3. `node`
 
@@ -158,11 +159,12 @@ outbound_peers:
 | 配置项 | 类型 | 默认值 | 约束 |
 |---|---|---|---|
 | `id` | string | — | 必填，唯一。本节点对另一节点的称呼，供 `listeners[].peer`、日志和指标标签使用。按惯例取对方的 `node.id`。 |
+| `mode` | string | `forward` | `forward` 或 `reverse`，见 §7.1。 |
 | `expected_node_id` | string | — | 必填，不得等于本节点的 `node.id`。每次探测都会核对对方的 `node.id`。 |
 | `credential_ref` | string | — | 必填，直接配置令牌时也必须填写。使用 `auth.credentials_file` 时用于选择 `outbound_peers[]` 条目。 |
 | `token_file` | 路径 | — | 发往该 peer 的 Bearer 令牌。未使用 `auth.credentials_file` 时，`token_file`/`token_env` 必须且只能设置一个（使用凭据文件时两者都不允许）。 |
 | `token_env` | 变量名 | — | 同上，取自环境变量。 |
-| `endpoints` | 列表 | — | 1 到 `limits.max_endpoints_per_peer` 项。 |
+| `endpoints` | 列表 | — | 正向 peer 1 到 `limits.max_endpoints_per_peer` 项；反向 peer 不允许配置。 |
 | `endpoints[].id` | string | — | 必填，在该 peer 内唯一。 |
 | `endpoints[].url` | string | — | 只能是 `http://` 或 `https://` 源（origin）：不含用户信息、路径（`/` 也不行）、查询串和片段；如写端口则为 1–65535。主机名会转为小写、默认端口会被去掉，规范化后重复的地址会被拒绝。指向非回环主机的明文 `http://` 需要 `allow_insecure_http: true`。 |
 | `endpoints[].priority` | int | `0` | ≥ 0，数值越小越优先。请为每个 endpoint 显式填写：省略时为 0，比显式写 1 的优先级更高。 |
@@ -183,6 +185,47 @@ outbound_peers:
 | `allow_insecure_http` | bool | `false` | 允许该 peer 使用指向非回环主机的明文 `http://` endpoint。只影响出站连接。 |
 
 两端设置如何汇合，见[传输 → 协商值](transport.zh-CN.md#2-协商值)。
+
+### 7.1 反向模式（`peers[].mode` 与 `reverse`）
+
+反向模式用于数据库一侧在 NAT 或防火墙之后、只能主动外连的场景：数据库侧节点（Egress 角色）主动连到公网侧节点（Ingress 角色），建立长连接隧道，所有 DBBridge 流量都在隧道里传输。每个 peer 单独选择模式，一个节点可以同时有正向和反向 peer。两端都必须是协议 1.5。
+
+隧道可以走 WebSocket、SSE 或长轮询，`auto` 按此顺序回退。`dbbridge gen-config --reverse` 可生成匹配的配置对（[运维 §1](operations.zh-CN.md#gen-config)）；隧道指标与 `/readyz` 规则见 [运维 §4–5](operations.zh-CN.md#4-admin-端点)，代理要求见 [传输 §7.1](transport.zh-CN.md#71-经代理的反向隧道)，威胁模型见 [安全 §9](security.zh-CN.md#9-反向模式)。
+
+**隧道工作方式。** 数据库侧节点对每个 endpoint 发起 `GET /v1/reverse`（WebSocket 升级，子协议 `dbbridge.reverse.v1.5`），每个 endpoint 保持 `reverse.tunnels_per_endpoint` 条隧道。隧道内用 smux v2 多路复用；smux 保活跟随 `transport.heartbeat` 与 `transport.failure_detect_timeout`；每条隧道的接收缓冲（codec_buffer_limit/16，介于 1 MiB 与 2×`buffer_per_direction` 之间）在两端都计入编解码预算。公网侧打开的每个流就是到数据库侧 Egress HTTP 服务的一条连接，因此会话、探测、冷却和恢复与正向 peer 完全一致（反向 peer 只有一个虚拟 endpoint `tunnel`）。除非同时开启 `http.enabled`，数据库侧不监听任何端口。
+
+**双向身份校验。** 握手携带 Bearer 令牌、数据库侧的 `node.id` 与实例 ID、它期望的 `node.id`（`reverse.peer_node_id`）、隧道 ID 和 endpoint 优先级。公网侧仅在以下条件同时满足时接受：令牌是某个反向 peer 的当前令牌（常量时间比较），数据库侧节点 ID 等于该 peer 的 `expected_node_id`，期望节点 ID 等于自身；随后在响应中返回自己的节点 ID 与实例 ID，由数据库侧在 TLS 之后再次核对。拒绝时返回：`401 DBB_UNAUTHORIZED`、`403 DBB_NODE_MISMATCH`、`409 DBB_PROTOCOL_MISMATCH`（反向协议版本不同）、`409 DBB_TUNNEL_CONFLICT`（隧道 ID 已注册，或同一 peer 的另一个实例仍有存活隧道：重启后的数据库侧在旧隧道消失后即可接入，最迟在 `failure_detect_timeout` 之后）。每个反向 peer 最多 64 条隧道。凭据重载轮换或吊销该 peer 的令牌时，用旧令牌建立的隧道会被关闭；数据库侧每次拨号都会重新读取 `reverse.token_file`。
+
+**SSE 与长轮询。** WebSocket 无法穿过时，隧道的字节流改由普通 HTTPS 请求承载，所有请求都由数据库侧发起：用 `POST /v1/reverse/{tunnel}/open` 建立隧道（身份校验与 WebSocket 握手相同）；用 `POST /v1/reverse/{tunnel}/up` 发送本端字节（带偏移和请求体的 SHA-256，每次最多 128 KiB，按偏移重传去重）；从 SSE 流 `GET /v1/reverse/{tunnel}/events`（`http-sse`）或长轮询 `GET /v1/reverse/{tunnel}/poll`（`long-poll`：有数据立即返回，最多 256 KiB，约 25 秒无数据返回 204）接收公网侧字节。每个请求都确认已收到的字节；两端各自保留未确认的字节（每个方向最多 512 KiB，与 smux 缓冲一起计入编解码预算），请求丢失后重发，因此 HTTP 连接被断开既不丢也不重，也不会断开隧道。请求绑定到建立隧道时的令牌和实例；公网侧已不存在的隧道返回 `404 DBB_TUNNEL_NOT_FOUND`，数据库侧随即新建隧道。长轮询每次公网侧突发数据多一个往返，因此只作为最后一级回退。
+
+**`auto` 回退。** `auto` 按 endpoint 依次尝试 WebSocket、SSE、长轮询。遇到不是 DBBridge 给出的应答（重定向、404、426、网关 5xx，或用 200 代替升级）以及 `DBB_TRANSPORT_UNSUPPORTED` 时回退；`401`、DBBridge 给出的拒绝（如经过验证的 `403`）和网络错误不回退。SSE 流的首个（`ready`）事件在 `transport.ws.handshake_timeout` 内未到达时，判定为被中间设备缓冲，改用长轮询。endpoint 回退后保持 10 分钟，之后的新隧道重新尝试 WebSocket。显式配置 `ws`、`http-sse` 或 `long-poll` 时不回退。
+
+**Endpoint 与重连。** 只有当没有更高优先级（`priority` 更小）的 endpoint 存在存活隧道时，较低优先级 endpoint 才会拨号；更优 endpoint 恢复后，已建立的隧道保持不动（同 `failback: new_sessions`）。公网侧在优先级最高、打开流最少的隧道上打开新流。隧道断开等同于载体中断：开启恢复时，会话在 `recovery.grace` 内经剩余或重连后的隧道恢复。
+
+**公网侧（Ingress）：`peers[].mode: reverse`**
+
+| 配置项 | 类型 | 默认值 | 约束 |
+|---|---|---|---|
+| `mode` | string | `forward` | `forward` 或 `reverse`。其他值报 `DBB-CFG-007`。 |
+
+反向 peer 不能配置 `endpoints`（`DBB-CFG-007`），并要求本节点 `http.enabled: true`，因为隧道经由 `http.listen` 上的 `/v1/reverse` 到达（`DBB-CFG-007`）。`expected_node_id`、`credential_ref`、令牌、`failover`、`recovery`、`transport` 的含义不变；令牌同时用于校验来连的隧道。反向 peer 的 `tls` 与 `allow_insecure_http` 不起作用，设置时给出警告。正向 peer 照旧必须配置 `endpoints`。
+
+**数据库侧（Egress）：`reverse` 段**
+
+| 配置项 | 类型 | 默认值 | 约束 |
+|---|---|---|---|
+| `reverse.enabled` | bool | `false` | 开启后本节点主动连出隧道，并在隧道上提供 Egress 角色（`targets`、入站身份）。不要求 `http.enabled`；隧道内层的 HTTP 视为回环，不要求 `http.tls`。未开启但填写了其他项时给出警告。 |
+| `reverse.peer_node_id` | string | — | 开启时必填，不得等于本节点 `node.id`。握手时核对公网侧节点的 `node.id`。 |
+| `reverse.token_file` / `reverse.token_env` | 路径 / 变量名 | — | 开启时必须且只能设置一个。用于隧道认证。读取失败报 `DBB-CFG-003`。 |
+| `reverse.transport` | string | `auto` | `auto`（WebSocket → SSE → 长轮询，见“`auto` 回退”）、`ws`、`http-sse` 或 `long-poll`。 |
+| `reverse.tunnels_per_endpoint` | int | `2` | 1–16。每个 endpoint 保持的隧道条数。 |
+| `reverse.endpoints` | 列表 | — | 开启时 1 到 `limits.max_endpoints_per_peer` 项，规则同 `peers[].endpoints`（`id`、`url`、`priority`）。指向非回环主机的明文 `http://` 需要 `reverse.allow_insecure_http: true`。 |
+| `reverse.reconnect.min_backoff` | 时长 | `500ms` | > 0。断线后首次重连不等待，之后按指数退避加抖动。 |
+| `reverse.reconnect.max_backoff` | 时长 | `30s`（不小于 `min_backoff`） | ≥ `min_backoff`，≤ `10m`。 |
+| `reverse.tls.verify` / `allow_insecure_skip_verify` / `ca_file` | — | 校验证书 | 规则同 `peers[].tls`，严格校验公网侧证书。CA 文件无法加载报 `DBB-CFG-004`。 |
+| `reverse.allow_insecure_http` | bool | `false` | 允许指向非回环主机的明文 `http://` 隧道 endpoint。 |
+
+`reverse` 段的其他错误报 `DBB-CFG-008`。开启恢复时，若 `transport.recovery.grace` 不大于 `peer_dial_timeout + reverse.reconnect.min_backoff + recovery.barrier_timeout`（首次重连失败后再试一次所需的时间），给出警告。
 
 ## 8. `listeners`
 
@@ -224,7 +267,7 @@ DNS 解析出错或超时与 TCP 连接被拒一样，以 `502 DBB_DIAL_FAILED` 
 | 配置项 | 类型 | 默认值 | 约束 |
 |---|---|---|---|
 | `protocol` | string | `auto` | `auto`、`ws`、`http-sse`。 |
-| `protocol_version` | string | `"1.4"` | 必须是字符串 `"1.4"`。 |
+| `protocol_version` | string | `"1.5"` | 必须是字符串 `"1.5"`。 |
 | `ws.handshake_timeout` | 时长 | `5s` | > 0。限制 WebSocket 升级（TCP、TLS、`101`）。 |
 | `ws.write_idle_timeout` | 时长 | `60s` | > 0。 |
 | `frame_size` | 尺寸 | `min(32KiB, max_frame_size)` | > 0，≤ `max_frame_size`。 |
@@ -303,6 +346,8 @@ DNS 解析出错或超时与 TCP 连接被拒一样，以 `502 DBB_DIAL_FAILED` 
 | 启用的入站身份 `max_sessions` 之和 ≤ `limits.max_sessions` | 启用身份多于一个时 |
 | `allowed_targets` 的每项都存在于 `targets` | 始终 |
 | 每个 `peers[].credential_ref` 都存在于 `outbound_peers` | 使用 `credentials_file` 时 |
+| 反向 peer 不得配置 `endpoints`，且本节点 `http.enabled: true`；正向 peer 必须配置 `endpoints` | 每个 peer |
+| `reverse.peer_node_id`、令牌、至少一个 `reverse.endpoints` 必填；`0 < min_backoff ≤ max_backoff ≤ 10m` | `reverse.enabled: true` 时 |
 
 ## 14. 会话容量与元数据预算
 
@@ -331,6 +376,7 @@ max_sessions × 每会话 ≤ 可用量
 - 不规范的 ID；
 - 入站配额相关警告（§6.2）；
 - `http.enabled: false` 却配置了 targets、入站凭据或 `http.tls`；节点无事可做；
+- 反向模式：反向 peer 设置了 `tls`/`allow_insecure_http`；`reverse.enabled: false` 却填写了 `reverse` 其他项；`reverse.enabled` 但没有 targets；`recovery.grace` 容不下隧道重连（§7.1）；
 - 会话恢复不可能成功：对强制使用单一载体（`ws` 或 `http-sse`）且只有一个可用 endpoint 的 peer，`transport.recovery.grace` 不大于 `failover.cooldown + recovery.barrier_timeout`。请调大 `grace`、调小 `cooldown`、改用 `auto` 或增加 endpoint。
 
 ## 16. 运行中重新读取的内容

@@ -30,11 +30,46 @@ const (
 	HeaderWSEpoch         = "X-DBB-Epoch"
 )
 
-// Subprotocol for WebSocket
-const SecWebSocketProtocol = "dbbridge.v1.4"
+// Subprotocol for WebSocket session and precheck carriers.
+const SecWebSocketProtocol = "dbbridge.v1.5"
 
-// ProtocolVersionString is the mandatory version string for v1.4
-const ProtocolVersionString = "1.4"
+// ProtocolVersionString is the mandatory protocol version. Both nodes must
+// speak exactly this version: a 1.4 peer is answered with
+// DBB_PROTOCOL_MISMATCH (probe, create) or fails the WebSocket subprotocol
+// check.
+const ProtocolVersionString = "1.5"
+
+// Reverse tunnel handshake (GET /v1/reverse, WebSocket upgrade). The
+// database-side node sends its identity and the node it expects; the
+// public-side node answers with its own identity in the upgrade response.
+const (
+	ReverseTunnelPath        = "/v1/reverse"
+	ReverseSubprotocol       = "dbbridge.reverse.v1.5"
+	ReverseSubprotocolPrefix = "dbbridge.reverse."
+	HeaderNodeID             = "X-DBB-Node-ID"
+	HeaderExpectedNodeID     = "X-DBB-Expected-Node-ID"
+	HeaderTunnelID           = "X-DBB-Tunnel-ID"
+	HeaderTunnelPriority     = "X-DBB-Tunnel-Priority"
+)
+
+// Reverse tunnels over plain HTTP (reverse.transport http-sse and long-poll,
+// and auto's fallbacks). The database side opens the tunnel with
+// POST /v1/reverse/{tunnel}/open, carrying the same identity headers as the
+// WebSocket handshake and the reverse protocol in HeaderReverseProtocol. It
+// then sends its bytes with POST /v1/reverse/{tunnel}/up (HeaderOffset,
+// HeaderSHA256, answered with HeaderConfirmUpOffset) and receives the
+// public side's bytes from GET /v1/reverse/{tunnel}/events (SSE, each event's
+// id is the offset of its data) or GET /v1/reverse/{tunnel}/poll (the body
+// starts at HeaderOffset). Every request carries the bytes received so far
+// in HeaderAckDownOffset. DELETE /v1/reverse/{tunnel} closes the tunnel.
+const (
+	HeaderReverseProtocol = "X-DBB-Reverse-Protocol"
+	HeaderTunnelTransport = "X-DBB-Tunnel-Transport"
+	ReverseOpenSuffix     = "/open"
+	ReverseUpSuffix       = "/up"
+	ReverseEventsSuffix   = "/events"
+	ReversePollSuffix     = "/poll"
+)
 
 // Supported transport modes
 const (
@@ -43,7 +78,7 @@ const (
 	TransportStrategyAuto = "auto"
 )
 
-// Standard Error Codes for protocol 1.4
+// Standard Error Codes of the protocol
 const (
 	ErrBadFrame             = "DBB_BAD_FRAME"
 	ErrBadDigest            = "DBB_BAD_DIGEST"
@@ -79,6 +114,14 @@ const (
 	ErrTransportMismatch    = "DBB_TRANSPORT_MISMATCH"
 	ErrWSHandshakeFailed    = "DBB_WS_HANDSHAKE_FAILED"
 	ErrWSProtocolError      = "DBB_WS_PROTOCOL_ERROR"
+	// ErrTunnelConflict: a reverse tunnel was refused because its tunnel ID
+	// is already registered, or because live tunnels of another instance of
+	// the same peer are still registered.
+	ErrTunnelConflict = "DBB_TUNNEL_CONFLICT"
+	// ErrTunnelNotFound: a request for an HTTP-carried reverse tunnel names
+	// a tunnel the public side does not hold (closed, expired or never
+	// opened). The database side drops it and opens a new one.
+	ErrTunnelNotFound = "DBB_TUNNEL_NOT_FOUND"
 )
 
 type ErrorResponse struct {

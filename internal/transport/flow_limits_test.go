@@ -37,7 +37,7 @@ func TestCreateSessionFlowLimits(t *testing.T) {
 				lim.UpReceiptLimit, lim.DownMaxFrames = tc.receipt, tc.frames
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(201)
-				_ = json.NewEncoder(w).Encode(protocol.CreateSessionResponse{ProtocolVersion: "1.4", NodeID: "B", InstanceID: "bi", SessionID: "0123456789abcdef0123456789abcdef", SessionToken: "t", Epoch: "1", Transport: protocol.TransportMode{Mode: "ws"}, Limits: lim, UnattachedTimeoutMs: 1000})
+				_ = json.NewEncoder(w).Encode(protocol.CreateSessionResponse{ProtocolVersion: "1.5", NodeID: "B", InstanceID: "bi", SessionID: "0123456789abcdef0123456789abcdef", SessionToken: "t", Epoch: "1", Transport: protocol.TransportMode{Mode: "ws"}, Limits: lim, UnattachedTimeoutMs: 1000})
 			}))
 			defer srv.Close()
 			c := NewTripleTransportClientForURL(srv.URL, "tok", testCfg(), "ing", true)

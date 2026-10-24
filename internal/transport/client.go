@@ -19,6 +19,8 @@ type clientShared struct {
 	provider                            func() string
 	dataConnections, controlConnections *resource.Budget
 	resourcesSet                        bool
+	// dialer opens peer connections; nil means TCP (see peerDialer).
+	dialer PeerDialer
 }
 type TripleTransportClient struct {
 	resources                            *resource.Manager
@@ -49,6 +51,15 @@ func newTripleTransportClient(url, token string, cfg *config.TransportConfig, in
 }
 
 func NewTripleTransportClient(p *config.PeerConfig, t *config.TransportConfig, inst string) *TripleTransportClient {
+	if p.IsReverse() {
+		// A reverse peer has no endpoints: its requests go to the virtual
+		// endpoint over streams of the tunnel it dials in. Until a tunnel
+		// is attached (SetPeerDialer) every dial fails fast.
+		c := newTripleTransportClient(ReverseEndpointURL, p.Token, t, inst, true, nil)
+		c.expectedNodeID = p.ExpectedNodeID
+		c.shared.dialer = TunnelDialer{Timeout: t.PeerDial()}
+		return c
+	}
 	url := p.Endpoints[0].URL
 	c := newTripleTransportClient(url, p.Token, t, inst, p.TLS.IsVerify(), loadPeerRoots(p))
 	c.expectedNodeID = p.ExpectedNodeID

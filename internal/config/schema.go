@@ -115,7 +115,7 @@ func validateSchema(data []byte, target any) error {
 				return invalid("an integer")
 			}
 			switch path[strings.LastIndex(path, ".")+1:] {
-			case "max_sessions", "max_endpoints_per_peer", "up_max_inflight_frames", "h2_pool_size", "receipt_limit_per_session", "healthy_threshold", "unhealthy_threshold", "max_concurrent_probes":
+			case "max_sessions", "max_endpoints_per_peer", "up_max_inflight_frames", "h2_pool_size", "receipt_limit_per_session", "healthy_threshold", "unhealthy_threshold", "max_concurrent_probes", "tunnels_per_endpoint":
 				var value int64
 				if n.Decode(&value) != nil || value <= 0 {
 					return invalid("a positive integer")

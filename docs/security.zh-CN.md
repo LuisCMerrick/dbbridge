@@ -12,6 +12,7 @@
 - [6. 目标 ACL 与 `allowed_cidrs`](#6-目标-acl-与-allowed_cidrs)
 - [7. Admin 端点暴露](#7-admin-端点暴露)
 - [8. 服务账户与文件权限](#8-服务账户与文件权限)
+- [9. 反向模式](#9-反向模式)
 
 ## 1. 安全模型
 
@@ -32,7 +33,8 @@
 7. **专用服务账户**，只读访问配置和密钥（§8）。密钥文件权限为 0600，或配合服务组使用 0640。
 8. **配额。** 为每个身份设置 `inbound_peers[].max_sessions`，避免某个对端占满所有会话；双向节点上让入站配额之和低于 `limits.max_sessions`。
 9. **部署前校验。** 在目标主机上以服务账户运行 `dbbridge check-config`，把每条 `Warning:` 都当作需要处理的问题。
-10. **监控凭据状态。** 对 `dbb_auth_credentials_stale == 1` 以及带 `code=DBB-CFG-020` 的日志告警（被拒绝的重载意味着之前的凭据仍在生效）。
+10. **反向模式。** 数据库侧保持 `reverse.tls.verify: true`，公网侧通过 TLS 提供服务（§9）。
+11. **监控凭据状态。** 对 `dbb_auth_credentials_stale == 1` 以及带 `code=DBB-CFG-020` 的日志告警（被拒绝的重载意味着之前的凭据仍在生效）。
 
 ## 3. 令牌与凭据来源
 
@@ -122,3 +124,15 @@ sudo dbbridge install -c /etc/dbbridge/peer.yaml --service-user dbbridge --dry-r
 **Windows。** 服务默认以 LocalSystem 运行（会给出警告）。建议使用 `--service-user LocalService`（或 `NetworkService`），并授予它对配置、凭据和 TLS 文件的读权限，例如 `icacls C:\dbbridge\peer.yaml /grant "NT AUTHORITY\LOCAL SERVICE:(R)"`。`install` 会检查访问权限，对无法确认的每个文件给出对应的 `icacls` 命令。`gen-config` 写出的文件带有受保护的 DACL（仅创建者、Administrators、SYSTEM 可访问），因此需要授权。
 
 **静态密钥。** `gen-config` 以 0600 写出令牌和配置文件（Windows 上为受保护的 DACL）。环境快照必须是普通文件，不得有组或其他用户权限，属主为服务账户或 root；否则服务拒绝启动（退出码 78）。切勿把 `*.token` 或 `*.service-env.json` 文件提交到版本库。
+
+## 9. 反向模式
+
+反向模式下，数据库侧主动连到公网侧，公网侧的 Ingress 再通过隧道把会话送回去。变化如下：
+
+- **隧道令牌等于数据库的钥匙。** 谁能拿着反向 peer 的令牌和正确的 `node.id` 拨入，谁就会收到公网侧发往该 peer 的数据库流量，包括客户端发出的数据库登录信息。因此公网侧以常量时间比较令牌，要求拨入方的 `node.id` 等于 `peers[].expected_node_id`、其 `X-DBB-Expected-Node-ID` 等于自己的 `node.id`，拒绝同一节点的第二个存活实例（`409 DBB_TUNNEL_CONFLICT`），并把每次拒绝计入 `dbb_reverse_hub_rejected_total{code}`。请对其增长告警。
+- **数据库侧必须校验公网侧。** 开启 TLS 校验时，数据库侧只会把令牌发给真正的公网节点，并在 TLS 之后核对公网侧返回的 `X-DBB-Node-ID`。`reverse.tls.verify: false` 或明文 `http://`（`reverse.allow_insecure_http`）会让路径上的任何人冒充公网侧，向数据库侧的目标建立会话；除实验环境外请保持关闭。
+- **授权仍在数据库侧。** 经隧道到达的会话仍按数据库侧的 `auth.inbound_peers`、`allowed_targets`/`allowed_cidrs` 校验，与正向模式完全相同。公网侧即使被攻破，也只能访问该身份允许的目标。
+- **吊销。** 在公网侧轮换或吊销反向 peer 的令牌（凭据重载）会立即关闭用旧令牌建立的隧道；数据库侧每次拨号都重新读取 `reverse.token_file`。紧急吊销（§5）在两侧都与正向模式相同。
+- **暴露面。** 除非设置 `http.enabled`，数据库侧不开任何监听端口。只有公网侧的 `http.listen` 可从网络访问；预认证连接限制按来源 IP 作用于隧道连接，已认证隧道内的流按隧道计数。
+- **令牌。** 与正向模式一样，建议隧道使用专用令牌（`gen-config --reverse` 为整对配置写一个共享令牌，生产环境请拆分）。
+

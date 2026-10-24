@@ -9,7 +9,7 @@ import (
 
 func TestYAMLAliasCannotBypassProtocolType(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "peer.yaml")
-	data := "node:\n  id: &numeric 1.4\ntransport:\n  protocol_version: *numeric\n"
+	data := "node:\n  id: &numeric 1.5\ntransport:\n  protocol_version: *numeric\n"
 	if err := os.WriteFile(p, []byte(data), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -122,5 +122,50 @@ func TestOutboundWhitespaceTokenRejectedDuringCheck(t *testing.T) {
 	c := &Config{Node: NodeConfig{ID: "A"}, Peers: []PeerConfig{{ID: "B", ExpectedNodeID: "B", CredentialRef: "B", TokenEnv: "DBB_TEST_BAD_TOKEN", Endpoints: []EndpointConfig{{ID: "one", URL: "http://127.0.0.1:18080"}}}}}
 	if err := c.ApplyDefaultsAndValidate(); err == nil {
 		t.Fatal("check-config accepted an outbound Bearer token that inbound credential validation rejects")
+	}
+}
+
+// The reverse-mode examples in docs/examples.md load as written.
+func TestExamplesReverseConfigsLoad(t *testing.T) {
+	t.Setenv("DBB_TOKEN_SECRET", "examples-validation-token")
+	t.Setenv("DBB_TOKEN_BRANCH", "examples-branch-token")
+	b, err := os.ReadFile(filepath.Join("..", "..", "docs", "examples.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := strings.ReplaceAll(string(b), "\r\n", "\n")
+	for marker, want := range map[string]int{"reverse-pair": 2, "mixed-node": 1} {
+		_, example, ok := strings.Cut(content, "<!-- example:"+marker+" -->")
+		if !ok {
+			t.Fatalf("missing example %s", marker)
+		}
+		example, _, _ = strings.Cut(example, "<!-- /example:"+marker+" -->")
+		count := 0
+		for {
+			_, rest, found := strings.Cut(example, "```yaml\n")
+			if !found {
+				break
+			}
+			body, rest, found := strings.Cut(rest, "```")
+			if !found {
+				t.Fatalf("%s: unclosed YAML", marker)
+			}
+			p := filepath.Join(t.TempDir(), "peer.yaml")
+			if err := os.WriteFile(p, []byte(body), 0600); err != nil {
+				t.Fatal(err)
+			}
+			c, err := LoadConfig(p)
+			if err != nil {
+				t.Fatalf("%s config %d: %v", marker, count+1, err)
+			}
+			for _, w := range c.Warnings {
+				t.Errorf("%s config %d warning: %s", marker, count+1, w)
+			}
+			count++
+			example = rest
+		}
+		if count != want {
+			t.Fatalf("%s: validated %d configs, want %d", marker, count, want)
+		}
 	}
 }

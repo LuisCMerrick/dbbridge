@@ -64,6 +64,7 @@ Writes `peer-a.yaml`, `peer-b.yaml` and `shared.token` into the output directory
 | `--recovery` | `true` | `--recovery=false` disables session recovery on both nodes. |
 | `--allow-insecure-http` | off | Allow plaintext `http://` peer URLs to non-loopback hosts (writes `peers[].allow_insecure_http: true`). |
 | `--force` | off | Replace existing configurations (the token is never replaced). On Linux the replaced files keep their mode and owner; on Windows new files get a protected DACL and must be granted again. |
+| `--reverse` | off | Reverse mode; needs `--mode a-to-b` or `b-to-a`. The node with the listener becomes the public side (a `mode: reverse` peer and an HTTP listener the tunnels dial in to, which takes `--x-tls-cert`/`--x-tls-key`); the node with the database becomes the database side: no listening socket, a `reverse` section whose endpoints are its `--x-peer-url` values (default: the public side's HTTP listener) and `reverse.transport` set from `--protocol`. |
 | `--max-sessions` | `200` | `limits.max_sessions` of both nodes. In bidirectional mode the inbound identity gets half. A sufficient `transport.metadata_limit` is written when needed. |
 | `--a-node-id`, `--b-node-id` | `A`, `B` | |
 | `--a-listen`, `--b-listen` | `127.0.0.1:13306`, `127.0.0.1:13307` | Local listener of each node. |
@@ -72,7 +73,7 @@ Writes `peer-a.yaml`, `peer-b.yaml` and `shared.token` into the output directory
 | `--a-target-id`, `--b-target-id` | `mysql`, `mysql` | Target ID; the other node's listener references it. |
 | `--a-target-address`, `--b-target-address` | `127.0.0.1:3306`, `127.0.0.1:3306` | Database address. |
 | `--a-allow-cidr`, `--b-allow-cidr` | the exact target IP (`/32` or `/128`) | Repeatable. Required for host-name targets. |
-| `--a-peer-url`, `--b-peer-url` | the other node's HTTP listener | Repeatable (failover endpoints `link-1`, `link-2`, ... with priority 1, 2, ...). `https` when the other node has a certificate; a wildcard listener becomes the loopback address. Set it explicitly for remote deployments. |
+| `--a-peer-url`, `--b-peer-url` | the other node's HTTP listener | Set on the dialing node: the ingress, or with `--reverse` the database side. Repeatable (failover endpoints `link-1`, `link-2`, ... with priority 1, 2, ...). `https` when the other node has a certificate; a wildcard listener becomes the loopback address. Set it explicitly for remote deployments. |
 | `--a-tls-cert`/`--a-tls-key`, `--b-tls-cert`/`--b-tls-key` | — | Existing certificate and key for the node's inbound HTTPS listener; both or neither. |
 
 Generated configurations use inline credentials with token files (re-read on reload), the same token in both directions, `tls.verify: true`, admin on loopback, and listener ID `database-local`. The token is 32 random bytes, hex-encoded, mode 0600 (protected DACL on Windows); its value is never printed.
@@ -89,17 +90,17 @@ Only services carrying the DBBridge marker are removed. The configuration, crede
 ### `version`
 
 ```
-dbbridge version <version> (commit: <commit>, built: <date>, runtime: <go version>, protocol: 1.4)
+dbbridge version <version> (commit: <commit>, built: <date>, runtime: <go version>, protocol: 1.5)
 ```
 
-Release builds carry the release version, source identity and build date. A plain `go build` shows `1.4-dev`, and commit and date from the Go build information (or `unknown`).
+Release builds carry the release version, source identity and build date. A plain `go build` shows `1.5-dev`, and commit and date from the Go build information (or `unknown`).
 
 ## 2. Exit status, signals and lifecycle
 
 | Exit status | Meaning |
 |---|---|
 | `0` | Success, including a clean stop after a termination request. |
-| `78` | Configuration or credential error (codes `DBB-CFG-001` to `DBB-CFG-006`) from `run`, `check-config` or `install`, including an unusable `--env-file`. |
+| `78` | Configuration or credential error (codes `DBB-CFG-001` to `DBB-CFG-008`) from `run`, `check-config` or `install`, including an unusable `--env-file`. |
 | `130` | A second termination request during the drain forced the exit. |
 | `1` | Everything else: command-line errors (unknown command, invalid option value), start failure such as an address already in use (`DBB-CFG-010`), a fatal failure while running (`DBB-CFG-011`), service install/uninstall failures that are not configuration errors (`DBB-CFG-030`). |
 
@@ -136,7 +137,7 @@ Served on `admin.listen` when `admin.enabled: true`; never on the peer port. No 
 | Path | Answer |
 |---|---|
 | `/healthz` | `200 ok` while the process runs. |
-| `/readyz` | `200 ready` after a successful start; `503 not ready` before start, during the drain and after a fatal failure. |
+| `/readyz` | `200 ready` after a successful start; `503 not ready` before start, during the drain and after a fatal failure. Reverse mode: a database side with `reverse.enabled` and no `http.enabled` is `503` while it has no live tunnel (body line `reverse: no tunnel to <peer_node_id>`); with `http.enabled` it stays `200` and adds that line. The public side never becomes not ready for a missing tunnel, because a load balancer that removed it would also keep the database side from dialing in; it adds `reverse peers without a tunnel: <ids>`. |
 | `/metrics` | Prometheus text format 0.0.4. The rendering is cached for 1 s. |
 
 Limits: at most 16 concurrent connections (more are closed), header read timeout 5 s, read/write timeout 10 s, idle timeout 30 s, headers ≤ 8 KiB.
@@ -208,7 +209,22 @@ Normal closes and closes during node shutdown are not counted as failures.
 | `dbb_auth_reload_last_success_timestamp_seconds` | gauge | both | Unix time of the last accepted credential load. |
 | `dbb_unbalanced_release_total` | counter | both | Accounting self-check; stays 0. A non-zero value indicates a defect worth reporting. |
 
-**Suggested alerts.** `dbb_auth_credentials_stale == 1`; `/readyz` not 200; `rate(dbb_dial_failed_total[5m]) > 0`; `dbb_endpoint_state{state="MISMATCHED"} == 1`; `dbb_resource_in_use / dbb_resource_limit > 0.9` for `sessions`, `metadata`, `payload`; rising `dbb_terminated_*` or `dbb_resume_failed_total`.
+### Reverse tunnels
+
+Rendered only on nodes that use reverse mode: the **public** families on a node with a `mode: reverse` peer, the **database-side** families on a node with `reverse.enabled`.
+
+| Metric | Type | Side | Meaning |
+|---|---|---|---|
+| `dbb_reverse_hub_tunnels{peer,transport}` | gauge | public | Live tunnels accepted from each reverse peer; `transport` ∈ `ws`, `http-sse`, `long-poll`. |
+| `dbb_reverse_hub_accepted_total` | counter | public | Tunnels accepted and registered. |
+| `dbb_reverse_hub_rejected_total{code}` | counter | public | Refused tunnel handshakes and HTTP tunnel requests by DBBridge code (`DBB_UNAUTHORIZED`, `DBB_NODE_MISMATCH`, `DBB_TUNNEL_CONFLICT`, `DBB_TUNNEL_NOT_FOUND`, ...). A series appears once its code has occurred. |
+| `dbb_reverse_tunnels{endpoint,transport}` | gauge | database | Live tunnels dialed to each `reverse.endpoints` entry. |
+| `dbb_reverse_tunnel_established_total` | counter | database | Tunnels established. |
+| `dbb_reverse_tunnel_lost_total` | counter | database | Established tunnels that ended while the node was running. |
+| `dbb_reverse_tunnel_dial_failures_total` | counter | database | Failed tunnel dials (after any fallback). |
+| `dbb_reverse_tunnel_fallback_total{from,to}` | counter | database | `auto` transport fallbacks (`ws`→`http-sse`, `http-sse`→`long-poll`). |
+
+**Suggested alerts.** `dbb_auth_credentials_stale == 1`; `/readyz` not 200; `rate(dbb_dial_failed_total[5m]) > 0`; `dbb_endpoint_state{state="MISMATCHED"} == 1`; `dbb_resource_in_use / dbb_resource_limit > 0.9` for `sessions`, `metadata`, `payload`; rising `dbb_terminated_*` or `dbb_resume_failed_total`. Reverse mode: `sum(dbb_reverse_hub_tunnels{peer="..."}) == 0` for more than a minute on the public side; `rate(dbb_reverse_tunnel_lost_total[5m]) > 0`; any increase of `dbb_reverse_hub_rejected_total{code=~"DBB_UNAUTHORIZED|DBB_NODE_MISMATCH"}` (someone dials with a wrong token or identity); a non-zero `dbb_reverse_tunnels{transport="long-poll"}` (a proxy forced the slowest carrier).
 
 ## 6. Logs and events
 
@@ -276,13 +292,15 @@ These codes appear in HTTP answers between nodes and in logs; a **database clien
 | `DBB_RESUME_IN_PROGRESS` | 409 | yes | Another resume of the session is running. |
 | `DBB_INSTANCE_MISMATCH` | 409 | no | The egress process restarted; sessions cannot continue. Clients reconnect. |
 | `DBB_NODE_MISMATCH` | 409 | no | The egress `node.id` differs from `peers[].expected_node_id`. Fix the configuration or the endpoint URL. |
-| `DBB_PROTOCOL_MISMATCH` | 409 | no | Protocol version other than 1.4. |
+| `DBB_PROTOCOL_MISMATCH` | 409 | no | Protocol version other than 1.5. |
 | `DBB_RECOVERY_DISABLED` | 409 | no | Resume requested for a session created without recovery. |
 | `DBB_RECOVERY_UNSUPPORTED` | 409 | no | Recovery requested but disabled on the egress. Align `recovery.enabled`. |
 | `DBB_FRAME_CONFLICT` | 409 / 410 | no | Data or FIN contradicts what was already received; the session is closed. |
 | `DBB_REPLAY_TOO_OLD` | 409 | no | Replayed frame is older than the retained receipts. |
 | `DBB_WINDOW_EXCEEDED` | 409 | yes | Too many frames in flight. |
-| `DBB_TRANSPORT_UNSUPPORTED` | 409 | no | Carrier not in `http.allowed_transports` (or WebSocket subprotocol missing). |
+| `DBB_TRANSPORT_UNSUPPORTED` | 409 (426) | no | Carrier not in `http.allowed_transports` (or WebSocket subprotocol missing). `426` when a WebSocket handshake reaches the node without its upgrade headers (a proxy stripped them). |
+| `DBB_TUNNEL_CONFLICT` | 409 | no | Reverse tunnel refused: its tunnel ID is already registered, or another instance of the same database-side node still has live tunnels (accepted once those are gone, at the latest after `failure_detect_timeout`). Two database-side nodes with the same `node.id` cause this permanently. |
+| `DBB_TUNNEL_NOT_FOUND` | 404 | no | A request for an SSE or long-polling reverse tunnel the public side no longer holds; the database side opens a new tunnel. |
 | `DBB_TRANSPORT_MISMATCH` | 409 | no | Request for a carrier other than the session's. |
 | `DBB_SESSION_CLOSED` | 410 | no | Session ended. The message is `session terminated: <category>`; `normal` means both directions finished. |
 | `DBB_BACKEND_LOST` | 410 | no | The database connection failed (reset or read error other than EOF). A normal EOF from the database is a FIN, not this code. |
@@ -317,6 +335,8 @@ When the egress ends a session itself, it also sends the terminal code on the se
 | `DBB-CFG-004` | TLS: `http.tls` certificate/key or `peers[].tls.ca_file` cannot be loaded. | 78 |
 | `DBB-CFG-005` | Listen addresses invalid or conflicting. | 78 |
 | `DBB-CFG-006` | Service credential environment: `--env-file` cannot be loaded, or a token variable needed by `install` is missing or malformed. | 78 |
+| `DBB-CFG-007` | Peer mode: invalid `peers[].mode`, a reverse peer with `endpoints`, or a reverse peer on a node without `http.enabled`. | 78 |
+| `DBB-CFG-008` | Reverse section: missing `peer_node_id`, token or endpoints, unknown `reverse.transport`, `tunnels_per_endpoint` out of range, plaintext non-loopback endpoint without opt-in, invalid reconnect backoff. | 78 |
 | `DBB-CFG-010` | Node failed to start (for example an address already in use). | 1 |
 | `DBB-CFG-011` | Fatal failure while running. | 1 |
 | `DBB-CFG-020` | Credential reload rejected; previous credentials kept (log only; the node keeps running). The cause is in `cause_code`. | — |
@@ -361,7 +381,12 @@ Workloads that open many short connections (no client-side connection pool) shou
 | Every session uses SSE although WebSocket is wanted | Proxy refuses or alters the upgrade | Proxy WebSocket settings ([Transport §7](transport.md#7-reverse-proxies-and-gateways)); `dbb_session_events_total{event="fallback"}`. |
 | `dbb_endpoint_state{state="MISMATCHED"}` | Wrong node behind the URL, protocol violation, TLS failure | `expected_node_id`, certificate host name, proxy that rewrites WebSocket messages. |
 | `429 DBB_QUOTA_EXCEEDED` in logs | Quota or budget exhausted (message names it) | §7 messages; `dbb_resource_in_use/limit`; §10. |
-| `/readyz` 503 | Starting, draining, or fatal failure | Log around the time; `DBB-CFG-011`. |
+| `/readyz` 503 | Starting, draining, or fatal failure; on a tunnel-only database side, no live tunnel | Log around the time; `DBB-CFG-011`; the body's `reverse:` line. |
+| Reverse peer: clients connected to the public side are closed at once | No tunnel from the database side | `dbb_reverse_hub_tunnels`; database-side log `reverse tunnel dial failed`; outbound firewall/proxy of the database side. |
+| `reverse tunnel dial failed ... 401` / `dbb_reverse_hub_rejected_total{code="DBB_UNAUTHORIZED"}` | `reverse.token_file` differs from the reverse peer's token on the public side | Both token files; reload state. |
+| `... 403 DBB_NODE_MISMATCH` or `tunnel peer node mismatch` | `reverse.peer_node_id` ≠ public `node.id`, or the database side's `node.id` ≠ `peers[].expected_node_id` | Both node IDs; the endpoint URL points at the right node. |
+| `409 DBB_TUNNEL_CONFLICT` keeps repeating | Two database-side processes with the same `node.id` | Stop the duplicate; after a restart it clears within `failure_detect_timeout`. |
+| Reverse tunnels use `long-poll` | A proxy refuses the WebSocket upgrade and buffers SSE | `dbb_reverse_tunnel_fallback_total`; proxy settings ([Transport §7.1](transport.md#71-reverse-tunnels-through-a-proxy)). |
 | Sessions break during long idle periods | Proxy idle timeout below heartbeat, or keep-alive below 60 s | Proxy timeouts ([Transport §7](transport.md#7-reverse-proxies-and-gateways)). |
 | Token change not applied | Reload rejected, or token from an environment variable | Log `DBB-CFG-020`; `dbb_auth_credentials_stale`; [Security §3](security.md#3-tokens-and-credential-sources). |
 | `check-config` passes but the service rejects reloads | File not visible or readable for the service (sandbox, permissions), or a new variable name | Keep credential files next to the configuration; permissions; reinstall for new variable names. |

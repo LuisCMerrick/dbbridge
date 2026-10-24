@@ -10,6 +10,7 @@ DBBridge is protocol-transparent: it forwards bytes exactly, never parses or rew
 
 - **One binary, three roles** — ingress (local listeners), egress (inbound HTTP server and databases) or both, decided by the configuration.
 - **Two carriers** — WebSocket by default; automatic fallback to HTTP POST + SSE on the same endpoint when a proxy cannot carry WebSocket.
+- **Reverse mode** — when the database sits behind NAT or a firewall, the database-side node dials a tunnel out to the public side (WebSocket, falling back to SSE and long polling) and sessions are multiplexed inside it; each peer chooses forward or reverse, and one node can mix both.
 - **Failover** — several endpoints per peer with priorities, background and on-demand health probes, cooldown of failed paths, failback for new sessions.
 - **Session recovery** — a broken carrier is replaced without closing the database connection: both sides resume from the last acknowledged offsets within a fixed grace period. Without recovery, or when it fails, the client connection is closed immediately so the application can reconnect.
 - **Security** — TLS, bearer-token identities, node identity check, per-identity target ACLs, address allow-lists for targets, per-identity quotas and budget shares.
@@ -47,7 +48,7 @@ Details: [Transport](docs/transport.md).
 | Linux amd64 / arm64 | ✓ | systemd |
 | Windows amd64 | ✓ | Windows service (built in), or WinSW |
 
-Building from source requires Go 1.27.3 or later. Nodes speak DBBridge protocol 1.4.
+Building from source requires Go 1.27.3 or later. Nodes speak DBBridge protocol 1.5.
 
 ## Quick start
 

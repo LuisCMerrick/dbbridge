@@ -31,5 +31,5 @@ targets:
   mssql: {network: tcp, address: "127.0.0.1:1433", allowed_cidrs: ["127.0.0.1/32"]}
 transport:
   protocol: auto
-  protocol_version: "1.4"
+  protocol_version: "1.5"
   recovery: {enabled: true, grace: 30s, barrier_timeout: 5s}

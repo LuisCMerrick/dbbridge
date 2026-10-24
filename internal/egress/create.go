@@ -177,7 +177,7 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 	sess.StartUnattachedTimer(unattached, nil)
 	s.wg.Add(1) // s.mu is held and s.stopped is false, so this precedes Close's Wait
 	go func() { defer s.wg.Done(); s.runBackendReader(sess, notify) }()
-	resp := &protocol.CreateSessionResponse{ProtocolVersion: "1.4", NodeID: s.cfg.Node.ID, InstanceID: s.cfg.Node.InstanceID, SessionID: sess.ID, SessionToken: sess.SessionToken, Epoch: "1", Transport: q.Transport, Recovery: protocol.RecoveryNegotiation{Enabled: q.Recovery.Enabled, GraceMs: grace.Milliseconds()}, Limits: lim, UnattachedTimeoutMs: unattached.Milliseconds()}
+	resp := &protocol.CreateSessionResponse{ProtocolVersion: protocol.ProtocolVersionString, NodeID: s.cfg.Node.ID, InstanceID: s.cfg.Node.InstanceID, SessionID: sess.ID, SessionToken: sess.SessionToken, Epoch: "1", Transport: q.Transport, Recovery: protocol.RecoveryNegotiation{Enabled: q.Recovery.Enabled, GraceMs: grace.Milliseconds()}, Limits: lim, UnattachedTimeoutMs: unattached.Milliseconds()}
 	s.registry.CompleteCreate(key, resp)
 	s.mu.Unlock()
 	writeJSON(w, 201, resp)
@@ -186,7 +186,7 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 // validCreate applies the request-only checks; each refusal is deterministic
 // and leaves no record.
 func validCreate(w http.ResponseWriter, q *protocol.CreateSessionRequest, s *Server) bool {
-	if q.ProtocolVersion != "1.4" {
+	if q.ProtocolVersion != protocol.ProtocolVersionString {
 		writeJSONError(w, 409, protocol.ErrProtocolMismatch, "protocol", false, false)
 		return false
 	}

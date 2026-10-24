@@ -26,6 +26,10 @@ type GeneratePairOptions struct {
 	A, B                                 GeneratePairNodeOptions
 	Recovery, AllowInsecureHTTP, Force   bool
 	MaxSessions                          int
+	// Reverse generates reverse mode for a one-way pair (a-to-b or
+	// b-to-a): the ingress node is the public side, the egress node (the
+	// database side) dials it.
+	Reverse bool
 }
 
 type GeneratedPairFiles struct {
@@ -54,6 +58,9 @@ func GeneratePair(o GeneratePairOptions) (result GeneratedPairFiles, err error) 
 		roles = [2]string{"egress", "ingress"}
 	default:
 		return result, errors.New("mode must be bidirectional, a-to-b, or b-to-a")
+	}
+	if o.Reverse && o.Mode == "bidirectional" {
+		return result, errors.New("reverse mode needs --mode a-to-b or b-to-a (the egress node is the database side behind NAT)")
 	}
 	if o.A.NodeID == "" || o.B.NodeID == "" || o.A.NodeID == o.B.NodeID {
 		return result, errors.New("node IDs for A and B must be nonempty and different")
@@ -113,7 +120,13 @@ func GeneratePair(o GeneratePairOptions) (result GeneratedPairFiles, err error) 
 	for i, node := range nodes {
 		other := nodes[1-i]
 		urls := node.PeerURLs
-		if roles[i] != "egress" && len(urls) == 0 {
+		// Forward: the ingress dials the egress. Reverse: the egress (the
+		// database side) dials the ingress (the public side).
+		dialer := roles[i] != "egress"
+		if o.Reverse {
+			dialer = roles[i] == "egress"
+		}
+		if dialer && len(urls) == 0 {
 			var endpoint string
 			endpoint, err = pairEndpoint(other)
 			if err != nil {
@@ -136,6 +149,7 @@ func GeneratePair(o GeneratePairOptions) (result GeneratedPairFiles, err error) 
 			PeerURLs: urls, AllowedCIDRs: node.AllowedCIDRs,
 			Recovery: o.Recovery, AllowInsecureHTTP: o.AllowInsecureHTTP, MaxSessions: o.MaxSessions,
 			InboundMaxSessions: inboundQuota(roles[i], o.MaxSessions),
+			Reverse:            o.Reverse,
 		})
 		if err != nil {
 			return result, fmt.Errorf("generate node %s: %w", node.NodeID, err)

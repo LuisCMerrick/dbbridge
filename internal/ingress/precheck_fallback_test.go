@@ -26,7 +26,7 @@ func precheckSelect(t *testing.T, ws http.HandlerFunc) (string, int32, error) {
 			probes.Add(1)
 			var q protocol.ProbeRequest
 			_ = json.NewDecoder(r.Body).Decode(&q)
-			_ = json.NewEncoder(w).Encode(protocol.ProbeResponse{ProtocolVersion: "1.4", NodeID: "B", InstanceID: "bi", Nonce: q.Nonce, RecoveryAvailable: true, AcceptingNewSessions: true, Transports: []string{"ws", "http-sse"}})
+			_ = json.NewEncoder(w).Encode(protocol.ProbeResponse{ProtocolVersion: "1.5", NodeID: "B", InstanceID: "bi", Nonce: q.Nonce, RecoveryAvailable: true, AcceptingNewSessions: true, Transports: []string{"ws", "http-sse"}})
 			return
 		}
 		ws(w, r)

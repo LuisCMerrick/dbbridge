@@ -44,7 +44,7 @@ auth:
 # the recovery grace are negotiated: the smaller value of the two nodes applies.
 transport:
   protocol: auto
-  protocol_version: "1.4"
+  protocol_version: "1.5"
   frame_size: 32768
   max_frame_size: 262144
   h2_pool_size: 4

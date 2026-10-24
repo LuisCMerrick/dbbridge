@@ -58,6 +58,12 @@ func (n *Node) writeMetrics(w io.Writer) {
 	for _, mode := range []string{"ws", "http-sse"} {
 		fmt.Fprintf(w, "dbb_egress_carrier_sessions{transport=%q} %d\n", mode, modes[mode])
 	}
+	if n.hub != nil {
+		n.hub.WriteMetrics(w)
+	}
+	if n.tunnelCli != nil {
+		n.tunnelCli.WriteMetrics(w)
+	}
 	if n.ingressMgr != nil {
 		n.ingressMgr.WriteMetrics(w)
 		snapshot := n.ingressMgr.SnapshotMetrics()

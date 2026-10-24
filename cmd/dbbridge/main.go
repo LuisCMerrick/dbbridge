@@ -50,7 +50,7 @@ func printError(w io.Writer, err error) {
 // credential problem, which exits with status 78.
 func isConfigurationCode(code string) bool {
 	switch code {
-	case config.CodeConfigRead, config.CodeConfigInvalid, config.CodeCredential, config.CodeTLS, config.CodeListen, config.CodeEnvironment:
+	case config.CodeConfigRead, config.CodeConfigInvalid, config.CodeCredential, config.CodeTLS, config.CodeListen, config.CodeEnvironment, config.CodePeerMode, config.CodeReverse:
 		return true
 	}
 	return false
@@ -237,6 +237,7 @@ func generateCommand(args []string, out, errOut io.Writer) error {
 	fs.BoolVar(&o.Recovery, "recovery", o.Recovery, "Enable session recovery on both nodes")
 	fs.BoolVar(&o.AllowInsecureHTTP, "allow-insecure-http", false, "Allow non-loopback plaintext HTTP to the peer (writes peers[].allow_insecure_http)")
 	fs.BoolVar(&o.Force, "force", false, "Replace both configs after validation; never replace the token")
+	fs.BoolVar(&o.Reverse, "reverse", false, "Reverse mode (needs --mode a-to-b or b-to-a): the egress node, behind NAT, dials a tunnel to the ingress node's HTTP listener")
 	fs.IntVar(&o.MaxSessions, "max-sessions", o.MaxSessions, "Global and inbound peer session quota per node")
 	for _, item := range []struct {
 		prefix string
@@ -264,6 +265,10 @@ func generateCommand(args []string, out, errOut io.Writer) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "Configuration pair generated and validated (mode: %s):\n  A: %s\n  B: %s\nShared token file: %s (deploy a copy with each node; its value is not printed)\n", o.Mode, files.ConfigA, files.ConfigB, files.TokenFile)
+	mode := o.Mode
+	if o.Reverse {
+		mode += ", reverse"
+	}
+	fmt.Fprintf(out, "Configuration pair generated and validated (mode: %s):\n  A: %s\n  B: %s\nShared token file: %s (deploy a copy with each node; its value is not printed)\n", mode, files.ConfigA, files.ConfigB, files.TokenFile)
 	return nil
 }

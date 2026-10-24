@@ -12,6 +12,7 @@
 - [6. Target ACLs and `allowed_cidrs`](#6-target-acls-and-allowed_cidrs)
 - [7. Admin endpoint exposure](#7-admin-endpoint-exposure)
 - [8. Service account and file permissions](#8-service-account-and-file-permissions)
+- [9. Reverse mode](#9-reverse-mode)
 
 ## 1. Security model
 
@@ -32,7 +33,8 @@
 7. **Dedicated service account** with read-only access to configuration and secrets (§8). Keep secrets at 0600, or 0640 with a service group.
 8. **Quotas.** Set `inbound_peers[].max_sessions` per identity so that one peer cannot take every session; keep the inbound sum below `limits.max_sessions` on bidirectional nodes.
 9. **Validate before deploying.** Run `dbbridge check-config` on the target host as the service account and treat every `Warning:` as a finding.
-10. **Monitor credentials.** Alert on `dbb_auth_credentials_stale == 1` and on log records with `code=DBB-CFG-020` (a rejected reload keeps the previous credentials in effect).
+10. **Reverse mode.** Keep `reverse.tls.verify: true` on the database side and serve the public side over TLS (§9).
+11. **Monitor credentials.** Alert on `dbb_auth_credentials_stale == 1` and on log records with `code=DBB-CFG-020` (a rejected reload keeps the previous credentials in effect).
 
 ## 3. Tokens and credential sources
 
@@ -122,3 +124,15 @@ sudo dbbridge install -c /etc/dbbridge/peer.yaml --service-user dbbridge --dry-r
 **Windows.** The service runs as LocalSystem by default (with a warning). Prefer `--service-user LocalService` (or `NetworkService`) and grant it read access to the configuration, credentials and TLS files, for example `icacls C:\dbbridge\peer.yaml /grant "NT AUTHORITY\LOCAL SERVICE:(R)"`. `install` checks the access and prints the `icacls` command for every file it cannot confirm. Files written by `gen-config` have a protected DACL (creator, Administrators, SYSTEM), so the grant is needed.
 
 **Secrets at rest.** `gen-config` writes token and configuration files 0600 (protected DACL on Windows). The environment snapshot must be a regular file without group or other permissions, owned by the service account or root; otherwise the service refuses to start (exit 78). Never commit `*.token` or `*.service-env.json` files.
+
+## 9. Reverse mode
+
+In reverse mode the database side dials out to the public side and the public side's ingress sends sessions back through the tunnel. What changes:
+
+- **The tunnel token is a key to the database.** Whoever presents the reverse peer's token with the right `node.id` gets the public side's database traffic for that peer, including the database logins its clients send. The public side therefore compares the token in constant time, requires the dialer's `node.id` to equal `peers[].expected_node_id` and its `X-DBB-Expected-Node-ID` to equal its own `node.id`, refuses a second live instance of the same node (`409 DBB_TUNNEL_CONFLICT`) and counts every refusal in `dbb_reverse_hub_rejected_total{code}`. Alert on increases.
+- **The database side must verify the public side.** With TLS verification the database side only sends its token to the real public node, and it checks the public side's `X-DBB-Node-ID` after TLS. `reverse.tls.verify: false` or plaintext `http://` (`reverse.allow_insecure_http`) lets anyone on the path impersonate the public side and open sessions to the database side's targets; keep both off outside a lab.
+- **Authorization stays on the database side.** Sessions arriving through the tunnel are still checked against `auth.inbound_peers` and `allowed_targets`/`allowed_cidrs` of the database side, exactly as in forward mode. A compromised public side can reach only the targets that identity allows.
+- **Revocation.** Rotating or revoking the reverse peer's token on the public side (credentials reload) closes the tunnels set up with the old token at once; the database side re-reads `reverse.token_file` on every dial. Emergency revocation (§5) works as in forward mode, on either side.
+- **Exposure.** The database side opens no listening socket unless `http.enabled` is set. Only the public side's `http.listen` is reachable from the network; the pre-authentication connection limits apply to tunnel connections by source IP, and streams inside an authenticated tunnel are counted per tunnel.
+- **Tokens.** As in forward mode, prefer a token used only for this tunnel (`gen-config --reverse` writes one shared token for the pair; split it for production).
+

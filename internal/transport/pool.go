@@ -86,12 +86,14 @@ func (c *TripleTransportClient) bindDial(tr *http.Transport, control bool) {
 }
 
 // dial opens a connection for pool self (nil for WebSocket dials) once it
-// holds a per-peer and a process-wide connection slot. Waiting for a slot is
+// holds a per-peer and a process-wide connection slot. The connection itself
+// comes from the peer's PeerDialer: a TCP connect for forward peers, a tunnel
+// stream for reverse peers. Waiting for a slot is
 // bounded by the requesting call's own deadline (see budgetWaitContext), not
 // by peer_dial_timeout, which bounds the TCP connect only; a wait that runs
 // out wraps ErrLocalConnBudget.
 func (c *TripleTransportClient) dial(ctx context.Context, network, address string, control bool, self http.RoundTripper) (net.Conn, error) {
-	d := &net.Dialer{Timeout: c.tCfg.PeerDial(), KeepAlive: 30 * time.Second}
+	d := c.peerDialer()
 	c.shared.mu.Lock()
 	peer := c.shared.dataConnections
 	if control {
@@ -124,7 +126,7 @@ func (c *TripleTransportClient) dial(ctx context.Context, network, address strin
 		}
 		release = func() { metadata.Put(8 << 10); global.Put(1); peer.Put(1) }
 	}
-	conn, err := d.DialContext(ctx, network, address)
+	conn, err := d.DialPeer(ctx, network, address)
 	if err != nil {
 		release()
 		return nil, err

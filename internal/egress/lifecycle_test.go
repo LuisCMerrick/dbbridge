@@ -56,7 +56,7 @@ func testCfg(t *testing.T, peers []config.InboundPeerConfig) *config.Config {
 
 func testCreate(t *testing.T, url, token, id, mode string) (*http.Response, protocol.CreateSessionResponse) {
 	t.Helper()
-	b, _ := json.Marshal(protocol.CreateSessionRequest{Limits: protocol.SessionLimits{MaxFrameSize: 1024, UpMaxInflightFrames: 8, UpWindowBytes: 2048, DownBufferBytes: 4096}, ProtocolVersion: "1.4", IngressInstanceID: "ai", CreateRequestID: id, TargetID: "db", Transport: protocol.TransportMode{Mode: mode}})
+	b, _ := json.Marshal(protocol.CreateSessionRequest{Limits: protocol.SessionLimits{MaxFrameSize: 1024, UpMaxInflightFrames: 8, UpWindowBytes: 2048, DownBufferBytes: 4096}, ProtocolVersion: "1.5", IngressInstanceID: "ai", CreateRequestID: id, TargetID: "db", Transport: protocol.TransportMode{Mode: mode}})
 	r, _ := http.NewRequest("POST", url+"/v1/sessions", bytes.NewReader(b))
 	r.Header.Set("Authorization", "Bearer "+token)
 	r.Header.Set(protocol.HeaderInstanceID, "bi")
@@ -154,7 +154,7 @@ func TestSlowBodyConnectionsAreReleased(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer c.Close()
-	body := `{"protocol_version":"1.4","expected_node_id":"B","nonce":"n1"}`
+	body := `{"protocol_version":"1.5","expected_node_id":"B","nonce":"n1"}`
 	fmt.Fprintf(c, "POST /v1/peer/probe HTTP/1.1\r\nHost: a\r\nAuthorization: Bearer tokA\r\nContent-Length: %d\r\n\r\n%s", len(body), body)
 	_ = c.SetReadDeadline(time.Now().Add(2 * time.Second))
 	line, e := bufio.NewReader(c).ReadString('\n')

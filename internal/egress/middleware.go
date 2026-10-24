@@ -159,6 +159,12 @@ func (s *Server) Handler() http.Handler {
 			preAuthReject(w, 400, protocol.ErrBadFrame, "invalid headers")
 			return
 		}
+		if s.hub != nil && (r.URL.Path == protocol.ReverseTunnelPath || strings.HasPrefix(r.URL.Path, protocol.ReverseTunnelPath+"/")) {
+			// Reverse tunnels authenticate with the reverse peer's token,
+			// not an inbound identity; the hub checks it.
+			s.hub.Serve(w, r, func() { markConnAuthenticated(r.Context()) })
+			return
+		}
 		rt, known := s.classify(r)
 		if !known {
 			preAuthReject(w, 404, protocol.ErrBadFrame, "not found")

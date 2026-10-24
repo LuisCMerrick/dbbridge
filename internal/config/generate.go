@@ -32,6 +32,11 @@ type GenerateOptions struct {
 	// A "peer" role node shares limits.max_sessions between its local
 	// listeners and the remote peer, so GeneratePair sets half.
 	InboundMaxSessions int
+	// Reverse generates reverse mode (role ingress or egress only): the
+	// ingress node becomes the public side (a reverse peer and an HTTP
+	// server the tunnels dial in to); the egress node opens no socket and
+	// dials PeerURLs (the public side) with a reverse section.
+	Reverse bool
 }
 
 type GeneratedFiles struct {
@@ -84,8 +89,14 @@ func Generate(o GenerateOptions) (result GeneratedFiles, err error) {
 	if (o.TLSCert == "") != (o.TLSKey == "") {
 		return result, errors.New("tls-cert and tls-key must be supplied together")
 	}
-	if o.Role == "ingress" && o.TLSCert != "" {
+	if o.Reverse && o.Role == "peer" {
+		return result, errors.New("reverse mode needs role ingress (public side) or egress (database side)")
+	}
+	if o.Role == "ingress" && o.TLSCert != "" && !o.Reverse {
 		return result, errors.New("ingress has no HTTP server; TLS server options need egress or peer role")
+	}
+	if o.Reverse && o.Role == "egress" && o.TLSCert != "" {
+		return result, errors.New("the database side of reverse mode has no HTTP server; TLS server options belong to the public (ingress) side")
 	}
 	if len(o.PeerURLs) == 0 {
 		o.PeerURLs = []string{"http://127.0.0.1:18080"}
@@ -166,7 +177,7 @@ func Generate(o GenerateOptions) (result GeneratedFiles, err error) {
 		"node":   map[string]any{"id": o.NodeID},
 		"admin":  map[string]any{"enabled": true, "listen": adminListen},
 		"limits": map[string]any{"max_sessions": o.MaxSessions},
-		"transport": map[string]any{"protocol": o.Protocol, "protocol_version": "1.4", "sql_replay": false,
+		"transport": map[string]any{"protocol": o.Protocol, "protocol_version": ProtocolVersion, "sql_replay": false,
 			"recovery": map[string]any{"enabled": o.Recovery, "grace": "30s", "barrier_timeout": "5s"}},
 	}
 	if limit := generatedMetadataLimitMiB(o.MaxSessions); limit > 0 {
@@ -181,6 +192,15 @@ func Generate(o GenerateOptions) (result GeneratedFiles, err error) {
 		if o.AllowInsecureHTTP {
 			peer["allow_insecure_http"] = true
 		}
+		if o.Reverse {
+			// The peer dials in; its token authenticates the tunnel.
+			peer = map[string]any{"id": o.PeerID, "mode": "reverse", "expected_node_id": o.PeerID, "credential_ref": o.PeerID, "token_file": tokenRef}
+			httpCfg, e := generatedHTTP(o)
+			if e != nil {
+				return result, e
+			}
+			m["http"] = httpCfg
+		}
 		m["peers"] = []any{peer}
 		remoteTarget := o.PeerTargetID
 		if remoteTarget == "" {
@@ -193,19 +213,27 @@ func Generate(o GenerateOptions) (result GeneratedFiles, err error) {
 		if o.InboundMaxSessions > 0 && o.InboundMaxSessions < inbound {
 			inbound = o.InboundMaxSessions
 		}
-		httpCfg := map[string]any{"enabled": true, "listen": o.HTTPListen}
-		if o.TLSCert != "" {
-			cert, e := filepath.Abs(o.TLSCert)
+		if o.Reverse {
+			endpoints := []any{}
+			for i, url := range o.PeerURLs {
+				endpoints = append(endpoints, map[string]any{"id": fmt.Sprintf("link-%d", i+1), "url": url, "priority": i + 1})
+			}
+			transport := o.Protocol
+			if transport == "" {
+				transport = "auto"
+			}
+			rev := map[string]any{"enabled": true, "peer_node_id": o.PeerID, "token_file": tokenRef, "transport": transport, "tls": map[string]any{"verify": true}, "endpoints": endpoints}
+			if o.AllowInsecureHTTP {
+				rev["allow_insecure_http"] = true
+			}
+			m["reverse"] = rev
+		} else {
+			httpCfg, e := generatedHTTP(o)
 			if e != nil {
 				return result, e
 			}
-			key, e := filepath.Abs(o.TLSKey)
-			if e != nil {
-				return result, e
-			}
-			httpCfg["tls"] = map[string]any{"enabled": true, "cert_file": filepath.ToSlash(cert), "key_file": filepath.ToSlash(key)}
+			m["http"] = httpCfg
 		}
-		m["http"] = httpCfg
 		m["targets"] = map[string]any{o.TargetID: map[string]any{"network": "tcp", "address": o.TargetAddress, "allowed_cidrs": o.AllowedCIDRs}}
 		m["auth"] = map[string]any{"inbound_peers": []any{map[string]any{"id": o.PeerID, "token_files": []string{tokenRef}, "allowed_targets": []string{o.TargetID}, "max_sessions": inbound}}}
 	}
@@ -261,6 +289,23 @@ func Generate(o GenerateOptions) (result GeneratedFiles, err error) {
 		return result, err
 	}
 	return GeneratedFiles{Config: output, TokenFile: tokenPath, TokenCreated: created}, nil
+}
+
+// generatedHTTP is the http section of a node that serves peers.
+func generatedHTTP(o GenerateOptions) (map[string]any, error) {
+	httpCfg := map[string]any{"enabled": true, "listen": o.HTTPListen}
+	if o.TLSCert != "" {
+		cert, e := filepath.Abs(o.TLSCert)
+		if e != nil {
+			return nil, e
+		}
+		key, e := filepath.Abs(o.TLSKey)
+		if e != nil {
+			return nil, e
+		}
+		httpCfg["tls"] = map[string]any{"enabled": true, "cert_file": filepath.ToSlash(cert), "key_file": filepath.ToSlash(key)}
+	}
+	return httpCfg, nil
 }
 
 func syncFile(path string) error {

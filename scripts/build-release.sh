@@ -18,7 +18,7 @@ fi
 export SOURCE_DATE_EPOCH
 build_date="$(date -u -d "@$SOURCE_DATE_EPOCH" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -r "$SOURCE_DATE_EPOCH" +%Y-%m-%dT%H:%M:%SZ)"
 # Without DBB_VERSION the version records the (UTC) source date.
-default_version="1.4.$(date -u -d "@$SOURCE_DATE_EPOCH" +%y.%m.%d 2>/dev/null || date -u -r "$SOURCE_DATE_EPOCH" +%y.%m.%d)"
+default_version="1.5.$(date -u -d "@$SOURCE_DATE_EPOCH" +%y.%m.%d 2>/dev/null || date -u -r "$SOURCE_DATE_EPOCH" +%y.%m.%d)"
 release_version="${DBB_VERSION:-$default_version}"
 source_identity="${DBB_COMMIT:-source-$source_hash}"
 if [[ ! "$release_version" =~ ^[A-Za-z0-9._+-]+$ || ! "$source_identity" =~ ^[A-Za-z0-9._:+-]+$ ]]; then

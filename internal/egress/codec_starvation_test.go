@@ -27,7 +27,7 @@ func TestMaximumValidTokenCannotUseProbe(t *testing.T) {
 	r := session.NewRegistry(cfg.Transport.SuspendedBufferLimit, cfg.Transport.GlobalBufferLimit)
 	srv := NewServer(cfg, a, r)
 	defer srv.Close()
-	request := httptest.NewRequest("POST", "/v1/peer/probe", bytes.NewBufferString(`{"protocol_version":"1.4","expected_node_id":"B","nonce":"nonce"}`))
+	request := httptest.NewRequest("POST", "/v1/peer/probe", bytes.NewBufferString(`{"protocol_version":"1.5","expected_node_id":"B","nonce":"nonce"}`))
 	request.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 	srv.ServeHTTP(w, request)

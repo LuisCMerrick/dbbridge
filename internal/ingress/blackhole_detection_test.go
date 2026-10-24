@@ -436,7 +436,7 @@ func TestPrecheckQuotaRemainsRetryableAndUncached(t *testing.T) {
 		c, err := up.Upgrade(w, r, nil)
 		if err == nil {
 			defer c.Close()
-			_ = c.WriteJSON(protocol.WSHelloMessage{Type: "hello", ProtocolVersion: "1.4", NodeID: "B", InstanceID: "bi", Nonce: r.Header.Get(protocol.HeaderWSNonce), Transport: "ws"})
+			_ = c.WriteJSON(protocol.WSHelloMessage{Type: "hello", ProtocolVersion: "1.5", NodeID: "B", InstanceID: "bi", Nonce: r.Header.Get(protocol.HeaderWSNonce), Transport: "ws"})
 		}
 	}))
 	defer ts.Close()

@@ -16,6 +16,10 @@ type Config struct {
 	Targets   map[string]TargetConfig `yaml:"targets"`
 	Limits    LimitsConfig            `yaml:"limits"`
 	Transport TransportConfig         `yaml:"transport"`
+	// Reverse makes this node the database side of reverse-mode peers: it
+	// dials out to the public-side node and serves its egress role over the
+	// tunnel instead of (or besides) http.listen.
+	Reverse ReverseConfig `yaml:"reverse"`
 
 	// Runtime generated
 	ConfigFileDir string            `yaml:"-"`
@@ -138,8 +142,19 @@ type PeerTransportConfig struct {
 	Protocol string `yaml:"protocol"`
 }
 
+// Peer modes (peers[].mode).
+const (
+	// PeerModeForward: this node connects to the peer's endpoints (default).
+	PeerModeForward = "forward"
+	// PeerModeReverse: the peer connects to this node and carries every
+	// session over that tunnel; the peer has no endpoints.
+	PeerModeReverse = "reverse"
+)
+
 type PeerConfig struct {
-	ID             string               `yaml:"id"`
+	ID string `yaml:"id"`
+	// Mode is forward (default) or reverse; validation sets the default.
+	Mode           string               `yaml:"mode"`
 	ExpectedNodeID string               `yaml:"expected_node_id"`
 	CredentialRef  string               `yaml:"credential_ref"`
 	Endpoints      []EndpointConfig     `yaml:"endpoints"`
@@ -155,6 +170,10 @@ type PeerConfig struct {
 	AllowInsecureHTTP bool `yaml:"allow_insecure_http"`
 }
 
+// IsReverse reports whether sessions to this peer run over a tunnel the peer
+// dials in, rather than over connections to its endpoints.
+func (p *PeerConfig) IsReverse() bool { return p.Mode == PeerModeReverse }
+
 func (p *PeerConfig) EffectiveRecoveryEnabled(globalRecovery bool) bool {
 	if !globalRecovery {
 		return false
@@ -164,6 +183,82 @@ func (p *PeerConfig) EffectiveRecoveryEnabled(globalRecovery bool) bool {
 	}
 	return globalRecovery
 }
+
+// Reverse tunnel transports (reverse.transport).
+const (
+	TunnelTransportAuto     = "auto"
+	TunnelTransportWS       = "ws"
+	TunnelTransportSSE      = "http-sse"
+	TunnelTransportLongPoll = "long-poll"
+)
+
+// Reverse tunnel defaults and bounds.
+const (
+	DefaultTunnelsPerEndpoint = 2
+	MaxTunnelsPerEndpoint     = 16
+	DefaultReverseMinBackoff  = 500 * time.Millisecond
+	DefaultReverseMaxBackoff  = 30 * time.Second
+	// MaxReverseBackoff bounds reverse.reconnect.max_backoff.
+	MaxReverseBackoff = 10 * time.Minute
+)
+
+// ReverseReconnectConfig is the tunnel reconnect backoff (exponential with
+// jitter between min_backoff and max_backoff; the first reconnect after a
+// tunnel loss does not wait).
+type ReverseReconnectConfig struct {
+	MinBackoffRaw interface{}   `yaml:"min_backoff"`
+	MaxBackoffRaw interface{}   `yaml:"max_backoff"`
+	MinBackoff    time.Duration `yaml:"-"`
+	MaxBackoff    time.Duration `yaml:"-"`
+}
+
+// ReverseConfig is the database-side half of reverse mode. When enabled the
+// node dials the public-side node at Endpoints, authenticates with the
+// token, checks that the far side is PeerNodeID and serves its egress role
+// (targets, inbound identities) over the tunnel.
+type ReverseConfig struct {
+	Enabled    bool   `yaml:"enabled"`
+	PeerNodeID string `yaml:"peer_node_id"`
+	TokenFile  string `yaml:"token_file"`
+	TokenEnv   string `yaml:"token_env"`
+	Token      string `yaml:"-"` // Resolved token
+	// Transport is the tunnel carrier: auto (WebSocket, then SSE, then
+	// long polling), ws, http-sse or long-poll.
+	Transport          string                 `yaml:"transport"`
+	TunnelsPerEndpoint int                    `yaml:"tunnels_per_endpoint"`
+	Endpoints          []EndpointConfig       `yaml:"endpoints"`
+	Reconnect          ReverseReconnectConfig `yaml:"reconnect"`
+	TLS                TLSClientConfig        `yaml:"tls"`
+	// AllowInsecureHTTP permits plaintext http:// tunnel endpoints that are
+	// not loopback addresses.
+	AllowInsecureHTTP bool `yaml:"allow_insecure_http"`
+}
+
+// ReverseEndpointURL is the origin of the one virtual endpoint a reverse
+// peer gets after validation. Its requests run as plaintext HTTP inside the
+// tunnel (the tunnel carries TLS) and the host is never resolved.
+const ReverseEndpointURL = "http://reverse.tunnel.invalid"
+
+// ReverseEndpointID is the ID of that virtual endpoint.
+const ReverseEndpointID = "tunnel"
+
+// MaxTunnelsPerPeer bounds the live tunnels the public side registers for
+// one reverse peer.
+const MaxTunnelsPerPeer = 64
+
+// HasReversePeers reports whether any peer uses reverse mode.
+func (c *Config) HasReversePeers() bool {
+	for i := range c.Peers {
+		if c.Peers[i].IsReverse() {
+			return true
+		}
+	}
+	return false
+}
+
+// EgressRole reports whether this node serves inbound sessions: on
+// http.listen, over reverse tunnels it dials out (reverse.enabled), or both.
+func (c *Config) EgressRole() bool { return c.HTTP.Enabled || c.Reverse.Enabled }
 
 type ListenerConfig struct {
 	ID     string `yaml:"id"`

@@ -64,7 +64,7 @@ func TestAutoMustRejectBadSubprotocol(t *testing.T) {
 		if r.URL.Path == "/v1/peer/probe" {
 			var q protocol.ProbeRequest
 			_ = json.NewDecoder(r.Body).Decode(&q)
-			_ = json.NewEncoder(w).Encode(protocol.ProbeResponse{ProtocolVersion: "1.4", NodeID: "B", InstanceID: "bi", Nonce: q.Nonce, RecoveryAvailable: true, AcceptingNewSessions: true, Transports: []string{"ws", "http-sse"}})
+			_ = json.NewEncoder(w).Encode(protocol.ProbeResponse{ProtocolVersion: "1.5", NodeID: "B", InstanceID: "bi", Nonce: q.Nonce, RecoveryAvailable: true, AcceptingNewSessions: true, Transports: []string{"ws", "http-sse"}})
 			return
 		}
 		c, e := (&websocket.Upgrader{}).Upgrade(w, r, nil)
@@ -72,7 +72,7 @@ func TestAutoMustRejectBadSubprotocol(t *testing.T) {
 			return
 		}
 		defer c.Close()
-		_ = c.WriteJSON(protocol.WSHelloMessage{Type: "hello", ProtocolVersion: "1.4", NodeID: "B", InstanceID: "bi", Nonce: r.Header.Get(protocol.HeaderWSNonce), Transport: "ws"})
+		_ = c.WriteJSON(protocol.WSHelloMessage{Type: "hello", ProtocolVersion: "1.5", NodeID: "B", InstanceID: "bi", Nonce: r.Header.Get(protocol.HeaderWSNonce), Transport: "ws"})
 	}))
 	defer srv.Close()
 	p := config.PeerConfig{ID: "B", ExpectedNodeID: "B", Token: "test-credential", Endpoints: []config.EndpointConfig{{ID: "e", URL: srv.URL}}, Failover: config.FailoverConfig{HealthcheckTimeout: time.Second, HealthyThreshold: 1, MaxConcurrentProbes: 2}}

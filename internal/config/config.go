@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"dbbridge/internal/protocol"
 	"dbbridge/internal/resource"
 )
 
@@ -29,6 +30,9 @@ func (c *Config) applyDefaultsAndValidate() error {
 	if err := c.validateListenersAndTargets(peerMap); err != nil {
 		return err
 	}
+	if err := c.validateReverse(); err != nil {
+		return err
+	}
 	if err := c.validateCredentials(); err != nil {
 		return WithCode(CodeCredential, err)
 	}
@@ -40,16 +44,20 @@ func (c *Config) applyDefaultsAndValidate() error {
 	}
 	c.warnUnusedSections()
 	c.warnRecoveryCooldown()
+	c.warnReverseGrace()
 	if c.Resources == nil {
 		c.Resources = resource.NewManager(c.Transport.GlobalBufferLimit, c.Transport.CodecBufferLimit, c.Transport.MetadataLimit, c.Limits.MaxSessions, c.Transport.SuspendedBufferLimit)
 	}
-	if c.HTTP.Enabled {
+	if c.EgressRole() {
 		// Bidirectional nodes keep a share for their own listeners.
 		c.ApplyIngressReserve()
 	}
 
 	return nil
 }
+
+// ProtocolVersion is the only transport.protocol_version this build accepts.
+const ProtocolVersion = protocol.ProtocolVersionString
 
 func (c *Config) applyBaseDefaults() error {
 	if c.Node.ID == "" {
@@ -134,10 +142,10 @@ func (c *Config) applyBaseDefaults() error {
 		return fmt.Errorf("invalid transport.protocol: %q (must be auto, ws, or http-sse)", c.Transport.Protocol)
 	}
 	if c.Transport.ProtocolVersion == "" {
-		c.Transport.ProtocolVersion = "1.4"
+		c.Transport.ProtocolVersion = ProtocolVersion
 	}
-	if c.Transport.ProtocolVersion != "1.4" {
-		return fmt.Errorf("protocol_version must be \"1.4\", got %q", c.Transport.ProtocolVersion)
+	if c.Transport.ProtocolVersion != ProtocolVersion {
+		return fmt.Errorf("protocol_version must be %q, got %q", ProtocolVersion, c.Transport.ProtocolVersion)
 	}
 	return nil
 }
@@ -145,18 +153,20 @@ func (c *Config) applyBaseDefaults() error {
 // warnUnusedSections reports configuration that validates but can never take
 // effect.
 func (c *Config) warnUnusedSections() {
-	if !c.HTTP.Enabled {
+	if !c.EgressRole() {
 		if len(c.Auth.InboundPeers) > 0 || c.Auth.CredentialsFile != "" && len(c.Peers) == 0 {
 			c.Warnings = append(c.Warnings, "auth inbound peers are configured but http.enabled is false; this node never accepts inbound sessions")
 		}
 		if len(c.Targets) > 0 {
 			c.Warnings = append(c.Warnings, "targets are configured but http.enabled is false; they are only used by the inbound HTTP server")
 		}
+	}
+	if !c.HTTP.Enabled {
 		if c.HTTP.TLS.Enabled || c.HTTP.TLS.CertFile != "" || c.HTTP.TLS.KeyFile != "" {
 			c.Warnings = append(c.Warnings, "http.tls is configured but http.enabled is false; the TLS settings are ignored")
 		}
 	}
-	if !c.HTTP.Enabled && len(c.Listeners) == 0 && len(c.Peers) == 0 {
+	if !c.EgressRole() && len(c.Listeners) == 0 && len(c.Peers) == 0 {
 		c.Warnings = append(c.Warnings, "neither http.enabled nor any peers or listeners are configured; the node has nothing to do")
 	}
 }

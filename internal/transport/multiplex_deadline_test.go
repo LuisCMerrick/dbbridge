@@ -25,7 +25,7 @@ func TestWSSAfterHTTP2Probe(t *testing.T) {
 			mu.Unlock()
 			var q protocol.ProbeRequest
 			json.NewDecoder(r.Body).Decode(&q)
-			json.NewEncoder(w).Encode(protocol.ProbeResponse{ProtocolVersion: "1.4", NodeID: "B", InstanceID: "bi", Nonce: q.Nonce, Transports: []string{"ws", "http-sse"}, AcceptingNewSessions: true})
+			json.NewEncoder(w).Encode(protocol.ProbeResponse{ProtocolVersion: "1.5", NodeID: "B", InstanceID: "bi", Nonce: q.Nonce, Transports: []string{"ws", "http-sse"}, AcceptingNewSessions: true})
 			return
 		}
 		up := websocket.Upgrader{Subprotocols: []string{protocol.SecWebSocketProtocol}}
@@ -34,7 +34,7 @@ func TestWSSAfterHTTP2Probe(t *testing.T) {
 			return
 		}
 		defer c.Close()
-		c.WriteJSON(protocol.WSHelloMessage{Type: "hello", ProtocolVersion: "1.4", NodeID: "B", InstanceID: "bi", Nonce: r.Header.Get(protocol.HeaderWSNonce), Transport: "ws"})
+		c.WriteJSON(protocol.WSHelloMessage{Type: "hello", ProtocolVersion: "1.5", NodeID: "B", InstanceID: "bi", Nonce: r.Header.Get(protocol.HeaderWSNonce), Transport: "ws"})
 	}))
 	ts.EnableHTTP2 = true
 	ts.StartTLS()

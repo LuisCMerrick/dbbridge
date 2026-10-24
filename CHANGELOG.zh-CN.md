@@ -4,6 +4,20 @@
 
 构建的版本号在构建时确定（`dbbridge version`）。
 
+## [Unreleased] - 协议 1.5，反向模式
+
+协议 1.5。**与 1.4 不兼容：**两端必须同时升级；1.4 节点会收到 `DBB_PROTOCOL_MISMATCH`，WebSocket 子协议改为 `dbbridge.v1.5`。
+
+- **反向模式配置。** 新增 `peers[].mode`（`forward`，默认；或 `reverse`）和顶层 `reverse` 段（`enabled`、`peer_node_id`、`token_file`/`token_env`、`transport` `auto|ws|http-sse|long-poll`、`tunnels_per_endpoint`、`endpoints`、`reconnect.min_backoff`/`max_backoff`、`tls`、`allow_insecure_http`），含默认值与校验。一个节点可以同时有正向和反向 peer。`check-config` 新增稳定错误码 `DBB-CFG-007`（peer 模式）和 `DBB-CFG-008`（`reverse` 段），退出码均为 78；`recovery.grace` 容不下隧道重连时给出警告。
+- **WebSocket 反向隧道。** 数据库侧节点拨 `GET /v1/reverse`（子协议 `dbbridge.reverse.v1.5`），每个 endpoint 按优先级保持 `tunnels_per_endpoint` 条隧道，断线后立即重连，之后按指数退避加抖动。隧道内用 smux v2 多路复用（新依赖 `github.com/xtaci/smux` v1.5.57）；每个流就是到 Egress HTTP 服务的一条连接，会话、探测、故障切换与恢复都不变，数据库侧不需要监听端口。两端都校验节点身份；公网侧以常量时间比较令牌，拒绝冒充（`403 DBB_NODE_MISMATCH`）、重复隧道 ID 和第二个存活实例（新错误码 `409 DBB_TUNNEL_CONFLICT`），凭据重载轮换或吊销令牌后关闭用旧令牌建立的隧道。隧道流共享入站连接预算，按隧道而不是按 IP 计数；隧道接收缓冲计入编解码预算。
+- **SSE 与长轮询反向隧道。** `reverse.transport: http-sse` 与 `long-poll` 用数据库侧发起的普通 HTTPS 请求承载 smux 字节流：`POST /v1/reverse/{tunnel}/open`、`POST …/up`（偏移加 SHA-256，可重传去重），以及 `GET …/events`（SSE）或 `GET …/poll`（长轮询，约 25 秒）。两端保留未确认的字节并重发，HTTP 连接被断开既不丢也不重，也不会断开隧道。请求绑定到建立隧道时的令牌和实例；公网侧已不存在的隧道返回新错误码 `404 DBB_TUNNEL_NOT_FOUND`。`auto` 现在按 endpoint 依次回退 WebSocket → SSE → 长轮询（遇到重定向、404、426、网关错误等非 DBBridge 应答，或 SSE 首个事件未在 `transport.ws.handshake_timeout` 内到达时回退；401、DBBridge 给出的 403 和网络错误不回退），10 分钟后重新尝试 WebSocket。到达公网侧时已丢失升级头的 WebSocket 握手现在返回 `426 DBB_TRANSPORT_UNSUPPORTED`（原为 `400 DBB_BAD_FRAME`）。
+- **反向模式工具与可观测性。** `dbbridge gen-config --reverse`（配合 `--mode a-to-b` 或 `b-to-a`）生成匹配的反向配置对：有监听器的节点成为公网侧，有数据库的节点主动拨入且不开任何端口。新增指标：公网侧 `dbb_reverse_hub_tunnels{peer,transport}`、`dbb_reverse_hub_accepted_total`、`dbb_reverse_hub_rejected_total{code}`；数据库侧 `dbb_reverse_tunnels{endpoint,transport}`、`dbb_reverse_tunnel_established_total`、`dbb_reverse_tunnel_lost_total`、`dbb_reverse_tunnel_dial_failures_total`、`dbb_reverse_tunnel_fallback_total{from,to}`。只通过隧道提供服务的数据库侧，在隧道建立前 `/readyz` 返回 `503`；公网侧保持就绪（负载均衡不能摘掉隧道要拨入的地址），并在响应体中列出没有隧道的反向 peer。文档：反向代理（传输 §7.1）、安全模型（安全 §9）、指标、错误码与故障排查（运维）、部署示例 5 和 6。
+- **修复。** 隧道连接断开后，公网侧要等到 smux keepalive 超时才发现（smux 在读错误时不会关闭会话），期间仍在失效隧道上开流并把它报告为存活。现在连接一断即结束该隧道。
+- **修复。** Egress WebSocket 读取端收到 gorilla 的 `close sent` 错误（本端已发出 close 帧后对端的 close 帧才到达）时，原先当作帧违规并以 `DBB_FRAME_CONFLICT` 结束会话，现在按载体中断处理，会话可以恢复。
+- **修复。** WebSocket 会话读取在连接结束时遇到被截断的 TLS 记录（裸 `unexpected EOF`，反向隧道流结束时即如此）被误判为帧违规并结束会话，而不是进入恢复。完整的 WebSocket 消息但其中 DBBridge 帧不完整，仍按违规处理。
+- **修复。** 隧道流现在具有精确的写入语义：smux 在写超时时报告未写出，但排队的帧仍会发出，调用方重试剩余部分会在流上产生重复字节。现在写入会复制后无超时地交给 smux，超时只限制等待上一块完成的时间。
+- **内部结构。** 对端连接改由 `PeerDialer` 打开（正向 peer 为 TCP，反向 peer 为隧道流），per-peer 与全局连接预算对两者同样生效；Egress HTTP 服务同时在基于隧道的虚拟 `net.Listener` 上提供服务。
+
 ## [1.4.26.10.23] - 2026-10-23
 
 协议 1.4。维护与协议加固版本。

@@ -8,6 +8,7 @@ import (
 	"dbbridge/internal/resource"
 	"dbbridge/internal/session"
 	"dbbridge/internal/transport"
+	"dbbridge/internal/tunnel"
 	"errors"
 	"log/slog"
 	"net"
@@ -48,6 +49,37 @@ type Server struct {
 	sessions sync.Map // id -> *sessState
 	// preAuthTimeout bounds unauthenticated sockets; 0 = default.
 	preAuthTimeout time.Duration
+	// hub accepts reverse tunnels on /v1/reverse (public side of reverse
+	// peers); nil when this node has none.
+	hub *tunnel.Hub
+	// tunnelLn delivers the streams of the tunnels this node dials out
+	// (reverse.enabled); nil when it dials none.
+	tunnelLn *tunnel.Listener
+}
+
+// Addr returns the address of the http.listen socket once started, or nil.
+func (s *Server) Addr() net.Addr {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.listener == nil {
+		return nil
+	}
+	return s.listener.Addr()
+}
+
+// SetReverseHub routes GET /v1/reverse to h. Call before Start.
+func (s *Server) SetReverseHub(h *tunnel.Hub) {
+	s.mu.Lock()
+	s.hub = h
+	s.mu.Unlock()
+}
+
+// SetTunnelListener makes Start also serve the streams delivered to ln, the
+// tunnels this node dials out. Call before Start.
+func (s *Server) SetTunnelListener(ln *tunnel.Listener) {
+	s.mu.Lock()
+	s.tunnelLn = ln
+	s.mu.Unlock()
 }
 
 // sessState is per-session state the egress keeps beside the session.
@@ -132,20 +164,39 @@ func (s *Server) Start() error {
 		return errors.New("egress server already started")
 	}
 	srv := &http.Server{Handler: s.Handler(), ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 90 * time.Second, MaxHeaderBytes: 16 << 10, ConnContext: guardConnContext}
-	ln, e := net.Listen("tcp", s.cfg.HTTP.Listen)
-	if e != nil {
-		return e
-	}
-	s.httpServer = srv
-	s.listener = ln
 	// Socket admission is charged to a connection-only metadata budget sized
 	// for the connection limit, never to the data-plane Metadata that creates,
 	// /up and streams need. Unauthenticated sockets are further
-	// bounded by connGuard.
+	// bounded by connGuard. Tunnel streams share both budgets.
 	conns, connMeta := s.cfg.Resources.InboundConnections, s.cfg.Resources.ConnMetadata
 	if connMeta == nil {
 		connMeta = resource.New(conns.Limit() * resource.ConnMetadataPerConn)
 	}
+	s.httpServer = srv
+	if s.tunnelLn != nil {
+		// Streams arrive over a tunnel that is already authenticated;
+		// the guard keys them by tunnel (their remote address), and one
+		// tunnel may use the whole unauthenticated share.
+		g := newConnGuard(conns.Limit(), s.preAuthTimeout)
+		g.maxPerIP = g.maxUnauth
+		var tl net.Listener = resource.LimitListener(s.tunnelLn, conns, connMeta)
+		tl = &guardListener{Listener: tl, g: g}
+		go func() { s.serveDone(srv.Serve(tl)) }()
+	}
+	// A node that only dials tunnels (http.enabled: false) opens no socket;
+	// without tunnels Start always listens on http.listen, as before.
+	if s.tunnelLn != nil && !s.cfg.HTTP.Enabled {
+		s.started = true
+		return nil
+	}
+	ln, e := net.Listen("tcp", s.cfg.HTTP.Listen)
+	if e != nil {
+		if s.tunnelLn != nil {
+			_ = srv.Close()
+		}
+		return e
+	}
+	s.listener = ln
 	ln = resource.LimitListener(ln, conns, connMeta)
 	ln = &guardListener{Listener: ln, g: newConnGuard(conns.Limit(), s.preAuthTimeout)}
 	ln = transport.IdleWriteListener(ln)

@@ -75,7 +75,7 @@ func TestBoundaryNegotiatedUpWindowReported(t *testing.T) {
 	s, c, reg, _ := boundaryServer(t)
 	c.Transport.UnattachedTimeout = time.Second * 10
 	c.Transport.UpWindowBytes = 1024
-	q := protocol.CreateSessionRequest{ProtocolVersion: "1.4", IngressInstanceID: "ai", CreateRequestID: "negotiated-window", TargetID: "db", Transport: protocol.TransportMode{Mode: "http-sse"}, Limits: protocol.SessionLimits{MaxFrameSize: 8, UpMaxInflightFrames: 2, UpWindowBytes: 16, DownBufferBytes: 32}}
+	q := protocol.CreateSessionRequest{ProtocolVersion: "1.5", IngressInstanceID: "ai", CreateRequestID: "negotiated-window", TargetID: "db", Transport: protocol.TransportMode{Mode: "http-sse"}, Limits: protocol.SessionLimits{MaxFrameSize: 8, UpMaxInflightFrames: 2, UpWindowBytes: 16, DownBufferBytes: 32}}
 	body, _ := json.Marshal(q)
 	r := httptest.NewRequest("POST", "/v1/sessions", bytes.NewReader(body))
 	r.Header.Set("Authorization", "Bearer token")
@@ -122,7 +122,7 @@ func testMalformedWSMustTerminate(t *testing.T, scenario string) {
 	c.Transport.UnattachedTimeout = 3 * time.Second
 	c.Transport.Recovery.Enabled = true
 	c.Transport.Recovery.Grace = time.Second
-	q := protocol.CreateSessionRequest{ProtocolVersion: "1.4", IngressInstanceID: "ai", CreateRequestID: "malformed-ws", TargetID: "db", Transport: protocol.TransportMode{Mode: "ws"}, Recovery: protocol.RecoveryNegotiation{Enabled: true, GraceMs: 1000}, Limits: protocol.SessionLimits{MaxFrameSize: 1024, UpMaxInflightFrames: 8, UpWindowBytes: 1024, DownBufferBytes: 1024}}
+	q := protocol.CreateSessionRequest{ProtocolVersion: "1.5", IngressInstanceID: "ai", CreateRequestID: "malformed-ws", TargetID: "db", Transport: protocol.TransportMode{Mode: "ws"}, Recovery: protocol.RecoveryNegotiation{Enabled: true, GraceMs: 1000}, Limits: protocol.SessionLimits{MaxFrameSize: 1024, UpMaxInflightFrames: 8, UpWindowBytes: 1024, DownBufferBytes: 1024}}
 	body, _ := json.Marshal(q)
 	r := httptest.NewRequest("POST", "/v1/sessions", bytes.NewReader(body))
 	r.Header.Set("Authorization", "Bearer token")

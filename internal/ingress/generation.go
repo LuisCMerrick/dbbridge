@@ -130,7 +130,7 @@ func (s *ingressSession) attach(parent context.Context, c *transport.TripleTrans
 		g.close()
 		return nil, e
 	}
-	if ready == nil || ready.Type != "ready" || ready.ProtocolVersion != "1.4" || ready.SessionID != s.sid || ready.InstanceID != s.owner || ready.Epoch != strconv.FormatUint(epoch, 10) || ready.Transport != mode || ready.StreamID == "" || resumeID == "" && ready.ResumeRequestID != nil || resumeID != "" && (ready.ResumeRequestID == nil || *ready.ResumeRequestID != resumeID) {
+	if ready == nil || ready.Type != "ready" || ready.ProtocolVersion != protocol.ProtocolVersionString || ready.SessionID != s.sid || ready.InstanceID != s.owner || ready.Epoch != strconv.FormatUint(epoch, 10) || ready.Transport != mode || ready.StreamID == "" || resumeID == "" && ready.ResumeRequestID != nil || resumeID != "" && (ready.ResumeRequestID == nil || *ready.ResumeRequestID != resumeID) {
 		g.close()
 		return nil, transport.ErrProtocol
 	}

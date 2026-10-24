@@ -16,7 +16,7 @@ func TestIdleConnectionCannotStarveAnotherEndpoint(t *testing.T) {
 	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var q protocol.ProbeRequest
 		json.NewDecoder(r.Body).Decode(&q)
-		json.NewEncoder(w).Encode(protocol.ProbeResponse{ProtocolVersion: "1.4", NodeID: "B", InstanceID: "bi", Nonce: q.Nonce, Transports: []string{"http-sse"}})
+		json.NewEncoder(w).Encode(protocol.ProbeResponse{ProtocolVersion: "1.5", NodeID: "B", InstanceID: "bi", Nonce: q.Nonce, Transports: []string{"http-sse"}})
 	})
 	a, b := httptest.NewServer(h), httptest.NewServer(h)
 	defer a.Close()
@@ -58,7 +58,7 @@ func TestDataConnectionSaturationPreservesControl(t *testing.T) {
 		if r.URL.Path == "/v1/peer/probe" {
 			var q protocol.ProbeRequest
 			json.NewDecoder(r.Body).Decode(&q)
-			json.NewEncoder(w).Encode(protocol.ProbeResponse{ProtocolVersion: "1.4", NodeID: "B", InstanceID: "bi", Nonce: q.Nonce, Transports: []string{"http-sse"}})
+			json.NewEncoder(w).Encode(protocol.ProbeResponse{ProtocolVersion: "1.5", NodeID: "B", InstanceID: "bi", Nonce: q.Nonce, Transports: []string{"http-sse"}})
 			return
 		}
 		w.Header().Set("Content-Type", "text/event-stream")

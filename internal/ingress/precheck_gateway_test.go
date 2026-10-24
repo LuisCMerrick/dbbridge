@@ -24,7 +24,7 @@ func gatewayPrecheckManager(t *testing.T, status int) (*IngressManager, config.P
 		if r.URL.Path == "/v1/peer/probe" {
 			var q protocol.ProbeRequest
 			_ = json.NewDecoder(r.Body).Decode(&q)
-			_ = json.NewEncoder(w).Encode(protocol.ProbeResponse{ProtocolVersion: "1.4", NodeID: "B", InstanceID: "bi", Nonce: q.Nonce, RecoveryAvailable: true, AcceptingNewSessions: true, Transports: []string{"ws", "http-sse"}})
+			_ = json.NewEncoder(w).Encode(protocol.ProbeResponse{ProtocolVersion: "1.5", NodeID: "B", InstanceID: "bi", Nonce: q.Nonce, RecoveryAvailable: true, AcceptingNewSessions: true, Transports: []string{"ws", "http-sse"}})
 			return
 		}
 		w.Header().Set("Location", "https://sso.example.com/")

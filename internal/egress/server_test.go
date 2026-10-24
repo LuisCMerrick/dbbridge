@@ -78,7 +78,7 @@ func setupTestServer(t *testing.T) (*egress.Server, *config.Config, string) {
 		},
 		Transport: config.TransportConfig{
 			Protocol:            "http-sse",
-			ProtocolVersion:     "1.4",
+			ProtocolVersion:     "1.5",
 			MaxFrameSize:        262144,
 			UpWindowBytes:       2 * 1024 * 1024,
 			UpMaxInflightFrames: 8,
@@ -101,7 +101,7 @@ func TestProbeEndpoint(t *testing.T) {
 	srv, _, token := setupTestServer(t)
 
 	reqBody, _ := json.Marshal(protocol.ProbeRequest{
-		ProtocolVersion: "1.4",
+		ProtocolVersion: "1.5",
 		ExpectedNodeID:  "hq-b",
 		Nonce:           "test_nonce_123",
 	})
@@ -121,7 +121,7 @@ func TestProbeEndpoint(t *testing.T) {
 		t.Fatalf("failed to decode probe response: %v", err)
 	}
 
-	if resp.ProtocolVersion != "1.4" || resp.NodeID != "hq-b" || resp.Nonce != "test_nonce_123" {
+	if resp.ProtocolVersion != "1.5" || resp.NodeID != "hq-b" || resp.Nonce != "test_nonce_123" {
 		t.Fatalf("unexpected probe response: %+v", resp)
 	}
 }
@@ -155,7 +155,7 @@ func TestCreateSessionValidation(t *testing.T) {
 	// 2. Instance ID mismatch must return 409 DBB_INSTANCE_MISMATCH
 	bodyOk, _ := json.Marshal(protocol.CreateSessionRequest{
 		Limits:            protocol.SessionLimits{MaxFrameSize: cfg.Transport.MaxFrameSize, UpMaxInflightFrames: cfg.Transport.UpMaxInflightFrames, UpWindowBytes: cfg.Transport.UpWindowBytes, DownBufferBytes: cfg.Transport.BufferPerDirection},
-		ProtocolVersion:   "1.4",
+		ProtocolVersion:   "1.5",
 		Transport:         protocol.TransportMode{Mode: "ws"},
 		CreateRequestID:   "cr_inst_mismatch",
 		IngressInstanceID: "inst_ing_1",
@@ -188,7 +188,7 @@ func TestCreateSessionValidation(t *testing.T) {
 	// 4. Idempotency conflict: same request ID but different target must return 409 DBB_IDEMPOTENCY_CONFLICT
 	bodyConflict, _ := json.Marshal(protocol.CreateSessionRequest{
 		Limits:            protocol.SessionLimits{MaxFrameSize: cfg.Transport.MaxFrameSize, UpMaxInflightFrames: cfg.Transport.UpMaxInflightFrames, UpWindowBytes: cfg.Transport.UpWindowBytes, DownBufferBytes: cfg.Transport.BufferPerDirection},
-		ProtocolVersion:   "1.4",
+		ProtocolVersion:   "1.5",
 		Transport:         protocol.TransportMode{Mode: "ws"},
 		CreateRequestID:   "cr_inst_mismatch",
 		IngressInstanceID: "inst_ing_1",
@@ -261,7 +261,7 @@ func TestInvalidCIDRMustFailClosed(t *testing.T) {
 		},
 		Transport: config.TransportConfig{
 			Protocol:        "http-sse",
-			ProtocolVersion: "1.4",
+			ProtocolVersion: "1.5",
 			MaxFrameSize:    262144,
 			DialTimeout:     2 * time.Second,
 		},
@@ -273,7 +273,7 @@ func TestInvalidCIDRMustFailClosed(t *testing.T) {
 
 	bodyOk, _ := json.Marshal(protocol.CreateSessionRequest{
 		Limits:            protocol.SessionLimits{MaxFrameSize: cfg.Transport.MaxFrameSize, UpMaxInflightFrames: cfg.Transport.UpMaxInflightFrames, UpWindowBytes: cfg.Transport.UpWindowBytes, DownBufferBytes: cfg.Transport.BufferPerDirection},
-		ProtocolVersion:   "1.4",
+		ProtocolVersion:   "1.5",
 		Transport:         protocol.TransportMode{Mode: "ws"},
 		CreateRequestID:   "cr_cidr_fail",
 		IngressInstanceID: "inst_ing_1",
@@ -329,7 +329,7 @@ func TestWSPrecheckHello(t *testing.T) {
 		t.Fatalf("failed to unmarshal hello message: %v", err)
 	}
 
-	if hello.Type != "hello" || hello.ProtocolVersion != "1.4" || hello.Nonce != "nonce-check-test-999" || hello.NodeID != cfg.Node.ID || hello.Transport != "ws" {
+	if hello.Type != "hello" || hello.ProtocolVersion != "1.5" || hello.Nonce != "nonce-check-test-999" || hello.NodeID != cfg.Node.ID || hello.Transport != "ws" {
 		t.Fatalf("unexpected hello message payload: %+v", hello)
 	}
 }
@@ -342,7 +342,7 @@ func TestWSSessionBidirectionalAndMismatch(t *testing.T) {
 	// 1. Create a session with transport.mode = "ws"
 	createBody, _ := json.Marshal(protocol.CreateSessionRequest{
 		Limits:            protocol.SessionLimits{MaxFrameSize: cfg.Transport.MaxFrameSize, UpMaxInflightFrames: cfg.Transport.UpMaxInflightFrames, UpWindowBytes: cfg.Transport.UpWindowBytes, DownBufferBytes: cfg.Transport.BufferPerDirection},
-		ProtocolVersion:   "1.4",
+		ProtocolVersion:   "1.5",
 		Transport:         protocol.TransportMode{Mode: "ws"},
 		CreateRequestID:   "cr_ws_test_01",
 		IngressInstanceID: "inst_ing_1",

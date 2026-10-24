@@ -59,6 +59,7 @@ errors.
 Examples:
   dbbridge gen-config
   dbbridge gen-config -o ./pair --a-peer-url https://b.example.com --b-peer-url https://a.example.com
+  dbbridge gen-config -o ./reverse --mode a-to-b --reverse --b-peer-url https://a.example.com
   dbbridge check-config --config peer-b.yaml --offline
   dbbridge install --config peer-b.yaml --dry-run
   dbbridge install --config peer-b.yaml --service-user dbbridge --start

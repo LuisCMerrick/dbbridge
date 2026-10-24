@@ -57,7 +57,7 @@ func boundaryServer(t *testing.T) (*Server, *config.Config, *session.Registry, *
 }
 func boundaryCreate(t *testing.T, s *Server, id, inst string, recovery bool) *httptest.ResponseRecorder {
 	t.Helper()
-	b, _ := json.Marshal(protocol.CreateSessionRequest{Limits: protocol.SessionLimits{MaxFrameSize: 1024, UpMaxInflightFrames: 8, UpWindowBytes: 1024, DownBufferBytes: 1024}, ProtocolVersion: "1.4", IngressInstanceID: "ai", CreateRequestID: id, TargetID: "db", Transport: protocol.TransportMode{Mode: "ws"}, Recovery: protocol.RecoveryNegotiation{Enabled: recovery, GraceMs: func() int64 {
+	b, _ := json.Marshal(protocol.CreateSessionRequest{Limits: protocol.SessionLimits{MaxFrameSize: 1024, UpMaxInflightFrames: 8, UpWindowBytes: 1024, DownBufferBytes: 1024}, ProtocolVersion: "1.5", IngressInstanceID: "ai", CreateRequestID: id, TargetID: "db", Transport: protocol.TransportMode{Mode: "ws"}, Recovery: protocol.RecoveryNegotiation{Enabled: recovery, GraceMs: func() int64 {
 		if recovery {
 			return 10
 		}
@@ -107,7 +107,7 @@ func TestQuotaReleasedAfterOrphan(t *testing.T) {
 }
 func TestDuplicateJSON(t *testing.T) {
 	s, _, _, _ := boundaryServer(t)
-	r := httptest.NewRequest("POST", "/v1/peer/probe", strings.NewReader(`{"protocol_version":"wrong","protocol_version":"1.4","expected_node_id":"B","nonce":"x"}`))
+	r := httptest.NewRequest("POST", "/v1/peer/probe", strings.NewReader(`{"protocol_version":"wrong","protocol_version":"1.5","expected_node_id":"B","nonce":"x"}`))
 	r.Header.Set("Authorization", "Bearer token")
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, r)
@@ -187,7 +187,7 @@ func TestDirectTLSHTTP2(t *testing.T) {
 	tr := &http.Transport{ForceAttemptHTTP2: true, TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
 	defer tr.CloseIdleConnections()
 	client := &http.Client{Transport: tr, Timeout: time.Second}
-	r, _ := http.NewRequest("POST", "https://"+srv.listener.Addr().String()+"/v1/peer/probe", strings.NewReader(`{"protocol_version":"1.4","expected_node_id":"B","nonce":"n"}`))
+	r, _ := http.NewRequest("POST", "https://"+srv.listener.Addr().String()+"/v1/peer/probe", strings.NewReader(`{"protocol_version":"1.5","expected_node_id":"B","nonce":"n"}`))
 	r.Header.Set("Authorization", "Bearer token")
 	resp, err := client.Do(r)
 	if err != nil {

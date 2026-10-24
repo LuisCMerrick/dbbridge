@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -92,5 +93,28 @@ func TestAdminCacheAndConnectionCap(t *testing.T) {
 		t.Fatal("connection beyond the cap was served")
 	} else if ne, ok := err.(net.Error); ok && ne.Timeout() {
 		t.Fatal("connection beyond the cap was left open")
+	}
+}
+
+func TestReadyCheckHoldsReadyz(t *testing.T) {
+	s := NewAdminServer("127.0.0.1:0")
+	s.SetReady(true)
+	ok, detail := true, ""
+	s.SetReadyCheck(func() (bool, string) { return ok, detail })
+	rec := httptest.NewRecorder()
+	s.handleReadyz(rec, httptest.NewRequest("GET", "/readyz", nil))
+	if rec.Code != 200 || rec.Body.String() != "ready\n" {
+		t.Fatalf("ready: %d %q", rec.Code, rec.Body.String())
+	}
+	ok, detail = false, "reverse: no tunnel to hq"
+	rec = httptest.NewRecorder()
+	s.handleReadyz(rec, httptest.NewRequest("GET", "/readyz", nil))
+	if rec.Code != 503 || rec.Body.String() != "not ready\nreverse: no tunnel to hq\n" || s.Ready() {
+		t.Fatalf("held: %d %q", rec.Code, rec.Body.String())
+	}
+	s.SetReady(false)
+	ok = true
+	if s.Ready() {
+		t.Fatal("check overrides SetReady(false)")
 	}
 }

@@ -55,7 +55,7 @@ func TestClampAdvertisedFrames(t *testing.T) {
 // The flow-limits fields exist only in create responses; a create request
 // carrying them has unknown fields.
 func TestCreateRequestRejectsResponseOnlyLimitFields(t *testing.T) {
-	q := CreateSessionRequest{ProtocolVersion: "1.4", Transport: TransportMode{Mode: "ws"}, CreateRequestID: "c", IngressInstanceID: "i", TargetID: "t", Limits: SessionLimits{MaxFrameSize: 1, UpMaxInflightFrames: 1, UpWindowBytes: 1, DownBufferBytes: 1}}
+	q := CreateSessionRequest{ProtocolVersion: "1.5", Transport: TransportMode{Mode: "ws"}, CreateRequestID: "c", IngressInstanceID: "i", TargetID: "t", Limits: SessionLimits{MaxFrameSize: 1, UpMaxInflightFrames: 1, UpWindowBytes: 1, DownBufferBytes: 1}}
 	b, _ := json.Marshal(q)
 	var got CreateSessionRequest
 	if err := DecodeJSON(bytes.NewReader(b), 4<<10, &got); err != nil {
@@ -74,7 +74,7 @@ func TestCreateRequestRejectsResponseOnlyLimitFields(t *testing.T) {
 		}
 	}
 	var resp CreateSessionResponse
-	r := CreateSessionResponse{ProtocolVersion: "1.4", NodeID: "n", InstanceID: "i", SessionID: "s", SessionToken: "t", Epoch: "1", Transport: TransportMode{Mode: "ws"}, Limits: SessionLimits{MaxFrameSize: 1, UpMaxInflightFrames: 1, UpWindowBytes: 1, DownBufferBytes: 1, UpReceiptLimit: 64, DownMaxFrames: 512}, UnattachedTimeoutMs: 1}
+	r := CreateSessionResponse{ProtocolVersion: "1.5", NodeID: "n", InstanceID: "i", SessionID: "s", SessionToken: "t", Epoch: "1", Transport: TransportMode{Mode: "ws"}, Limits: SessionLimits{MaxFrameSize: 1, UpMaxInflightFrames: 1, UpWindowBytes: 1, DownBufferBytes: 1, UpReceiptLimit: 64, DownMaxFrames: 512}, UnattachedTimeoutMs: 1}
 	b, _ = json.Marshal(r)
 	if err := DecodeJSON(bytes.NewReader(b), 4<<10, &resp); err != nil || resp.Limits.UpReceiptLimit != 64 || resp.Limits.DownMaxFrames != 512 {
 		t.Fatalf("response with flow limits: %v", err)

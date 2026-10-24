@@ -138,7 +138,7 @@ func wsHeader(token string, cr protocol.CreateSessionResponse) http.Header {
 func TestWSSessionErrors(t *testing.T) {
 	cfg := testCfg(t, []config.InboundPeerConfig{{ID: "A", Tokens: []string{"tokA"}, AllowedTargets: []string{"db"}, MaxSessions: 5}})
 	s, ts := egrServer(t, cfg)
-	b, _ := json.Marshal(protocol.CreateSessionRequest{Limits: protocol.SessionLimits{MaxFrameSize: 1024, UpMaxInflightFrames: 8, UpWindowBytes: 2048, DownBufferBytes: 4096}, ProtocolVersion: "1.4", IngressInstanceID: "ai", CreateRequestID: "w1", TargetID: "db", Transport: protocol.TransportMode{Mode: "ws"}})
+	b, _ := json.Marshal(protocol.CreateSessionRequest{Limits: protocol.SessionLimits{MaxFrameSize: 1024, UpMaxInflightFrames: 8, UpWindowBytes: 2048, DownBufferBytes: 4096}, ProtocolVersion: "1.5", IngressInstanceID: "ai", CreateRequestID: "w1", TargetID: "db", Transport: protocol.TransportMode{Mode: "ws"}})
 	r, _ := http.NewRequest("POST", ts.URL+"/v1/sessions", strings.NewReader(string(b)))
 	r.Header.Set("Authorization", "Bearer tokA")
 	r.Header.Set(protocol.HeaderInstanceID, "bi")

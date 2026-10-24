@@ -51,7 +51,7 @@ func dialFrom(t *testing.T, ip, addr string) net.Conn {
 
 func probeStatus(t *testing.T, addr, token string) (int, error) {
 	t.Helper()
-	b, _ := json.Marshal(protocol.ProbeRequest{ProtocolVersion: "1.4", Nonce: "n"})
+	b, _ := json.Marshal(protocol.ProbeRequest{ProtocolVersion: "1.5", Nonce: "n"})
 	r, _ := http.NewRequest("POST", "http://"+addr+"/v1/peer/probe", bytes.NewReader(b))
 	r.Header.Set("Authorization", "Bearer "+token)
 	r.Header.Set("Content-Type", "application/json")
@@ -244,7 +244,7 @@ func TestAuthenticatedH2ConnOutlivesPreAuth(t *testing.T) {
 	defer tr.CloseIdleConnections()
 	client := &http.Client{Transport: tr, Timeout: 2 * time.Second}
 	probe := func() {
-		r, _ := http.NewRequest("POST", "https://"+srv.listener.Addr().String()+"/v1/peer/probe", strings.NewReader(`{"protocol_version":"1.4","expected_node_id":"B","nonce":"n"}`))
+		r, _ := http.NewRequest("POST", "https://"+srv.listener.Addr().String()+"/v1/peer/probe", strings.NewReader(`{"protocol_version":"1.5","expected_node_id":"B","nonce":"n"}`))
 		r.Header.Set("Authorization", "Bearer token")
 		resp, err := client.Do(r)
 		if err != nil {

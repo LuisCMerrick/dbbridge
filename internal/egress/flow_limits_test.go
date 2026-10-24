@@ -12,7 +12,7 @@ import (
 
 func flowCreate(t *testing.T, url, id, target string) (int, []byte) {
 	t.Helper()
-	b, _ := json.Marshal(protocol.CreateSessionRequest{Limits: protocol.SessionLimits{MaxFrameSize: 1024, UpMaxInflightFrames: 8, UpWindowBytes: 2048, DownBufferBytes: 4096}, ProtocolVersion: "1.4", IngressInstanceID: "ai", CreateRequestID: id, TargetID: target, Transport: protocol.TransportMode{Mode: "http-sse"}})
+	b, _ := json.Marshal(protocol.CreateSessionRequest{Limits: protocol.SessionLimits{MaxFrameSize: 1024, UpMaxInflightFrames: 8, UpWindowBytes: 2048, DownBufferBytes: 4096}, ProtocolVersion: "1.5", IngressInstanceID: "ai", CreateRequestID: id, TargetID: target, Transport: protocol.TransportMode{Mode: "http-sse"}})
 	r, _ := http.NewRequest("POST", url+"/v1/sessions", bytes.NewReader(b))
 	r.Header.Set("Authorization", "Bearer tokA")
 	r.Header.Set(protocol.HeaderInstanceID, "bi")

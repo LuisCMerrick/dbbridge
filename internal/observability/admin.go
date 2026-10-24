@@ -59,7 +59,10 @@ type Metrics struct {
 var DefaultMetrics = &Metrics{}
 
 type AdminServer struct {
-	collect    func(io.Writer)
+	collect func(io.Writer)
+	// readyCheck, when set, is consulted while ready is true: it can hold
+	// the node not ready (ok false) and add a detail line to /readyz.
+	readyCheck func() (ok bool, detail string)
 	listenAddr string
 	listener   net.Listener
 	server     *http.Server
@@ -160,7 +163,31 @@ func (s *AdminServer) Start() error {
 }
 
 // Ready reports whether /readyz currently returns 200.
-func (s *AdminServer) Ready() bool { return s.ready.Load() }
+func (s *AdminServer) Ready() bool {
+	ok, _ := s.readiness()
+	return ok
+}
+
+// SetReadyCheck installs a check that /readyz consults once the node is
+// started (SetReady(true)); nil removes it.
+func (s *AdminServer) SetReadyCheck(fn func() (bool, string)) {
+	s.mu.Lock()
+	s.readyCheck = fn
+	s.mu.Unlock()
+}
+
+func (s *AdminServer) readiness() (bool, string) {
+	if !s.ready.Load() {
+		return false, ""
+	}
+	s.mu.Lock()
+	fn := s.readyCheck
+	s.mu.Unlock()
+	if fn == nil {
+		return true, ""
+	}
+	return fn()
+}
 
 func (s *AdminServer) SetReady(ready bool) {
 	s.ready.Store(ready)
@@ -188,13 +215,17 @@ func (s *AdminServer) handleHealthz(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *AdminServer) handleReadyz(w http.ResponseWriter, r *http.Request) {
-	if s.ready.Load() {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ready\n"))
-	} else {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		_, _ = w.Write([]byte("not ready\n"))
+	ok, detail := s.readiness()
+	body := "not ready\n"
+	status := http.StatusServiceUnavailable
+	if ok {
+		body, status = "ready\n", http.StatusOK
 	}
+	if detail != "" {
+		body += detail + "\n"
+	}
+	w.WriteHeader(status)
+	_, _ = w.Write([]byte(body))
 }
 
 func (s *AdminServer) handleMetrics(w http.ResponseWriter, r *http.Request) {

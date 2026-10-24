@@ -77,6 +77,17 @@ func NewIngressManager(c *config.Config, a *auth.Authenticator) *IngressManager 
 	return m
 }
 
+// SetReverseOpener makes reverse peer id open its connections as streams
+// from open (the tunnels that peer dialed in). Call before Start.
+func (m *IngressManager) SetReverseOpener(id string, open transport.StreamOpener) {
+	m.mu.Lock()
+	cl := m.clients[id]
+	m.mu.Unlock()
+	if cl != nil {
+		cl.SetPeerDialer(transport.TunnelDialer{Open: open, Timeout: m.cfg.Transport.PeerDial()})
+	}
+}
+
 // Start opens every configured listener and starts the health loops. It may
 // succeed only once: a second call (or a call after Close/Drain) returns an
 // error and never touches listeners that are already running. When one

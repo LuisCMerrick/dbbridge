@@ -19,7 +19,7 @@
 
 一个会话（即一条数据库客户端连接）通过一个**载体**传输：
 
-- **`ws`**：每个会话一条 WebSocket，子协议为 `dbbridge.v1.4`，双向传输二进制数据帧，另有文本控制消息。
+- **`ws`**：每个会话一条 WebSocket，子协议为 `dbbridge.v1.5`，双向传输二进制数据帧，另有文本控制消息。
 - **`http-sse`**：上行数据以 HTTP `POST /v1/sessions/{id}/up` 请求发送（每个请求一帧，附带 SHA-256 摘要头）；下行数据和控制事件通过 Server-Sent Events 流（`GET /v1/sessions/{id}/events`）接收。确认和 FIN 使用单独的控制请求。
 
 控制操作（probe、create、ack、fin、resume、delete）始终使用独立的 HTTP 连接池，因此数据通道饱和时控制操作仍然畅通。
@@ -53,7 +53,7 @@ Egress 按已认证身份限制 WebSocket 预检：最多 2 个并发，每秒 4
 | 恢复宽限期 | 取两端 `recovery.grace` 中较小的值。 |
 | 首次接入 | Ingress 必须在 Egress 的 `unattached_timeout` 内接入载体；超时后 Egress 丢弃该会话，Ingress 以 `timeout` 原因结束会话。 |
 | 载体 | 必须在 Egress 的 `http.allowed_transports` 中，否则返回 `409 DBB_TRANSPORT_UNSUPPORTED`。 |
-| 协议版本 | 两端都必须为 `1.4`，否则返回 `409 DBB_PROTOCOL_MISMATCH`。 |
+| 协议版本 | 两端都必须为 `1.5`，否则返回 `409 DBB_PROTOCOL_MISMATCH`。 |
 
 两端 `transport` 段保持一致可以让行为更容易预期，但并非必需。
 
@@ -160,7 +160,7 @@ Egress 的 `http.listen` 前面可以放置反向代理、负载均衡或 API �
 
 **响应头**：透传 `X-DBB-Instance-ID`（Ingress 用它确认错误应答确实来自对端）和 `Retry-After`。不要用代理自己的错误页替换 DBBridge 的错误响应体。
 
-**WebSocket**：转发升级请求所需的 `Upgrade`、`Connection`、`Sec-WebSocket-Key`、`Sec-WebSocket-Version`、`Sec-WebSocket-Protocol: dbbridge.v1.4`（以及应答中的 `Sec-WebSocket-Protocol`）。代理做不到时，使用 `auto`（会话回退到 SSE）或 `http-sse`。
+**WebSocket**：转发升级请求所需的 `Upgrade`、`Connection`、`Sec-WebSocket-Key`、`Sec-WebSocket-Version`、`Sec-WebSocket-Protocol: dbbridge.v1.5`（以及应答中的 `Sec-WebSocket-Protocol`）。代理做不到时，使用 `auto`（会话回退到 SSE）或 `http-sse`。
 
 **SSE**：不要缓冲 `GET /v1/sessions/{id}/events` 的响应（nginx：`proxy_buffering off`），也不要缓冲上行 POST 的请求体。`/up` 请求体最大为 `max_frame_size`（默认 256 KiB）。
 
@@ -198,6 +198,21 @@ server {
 ```
 
 由代理终结 TLS 时，Egress 的 `http.listen` 保持在回环地址上（无需 `http.tls`），Ingress 的 endpoint 指向 `https://hq.example.com`（端口 443，URL 中不写端口）。
+
+### 7.1 经代理的反向隧道
+
+反向模式下（[配置 §7.1](configuration.zh-CN.md#71-反向模式peersmode-与-reverse)），代理位于**公网侧** `http.listen` 之前，所有请求都由数据库侧发起。上面的 `location /v1/` 已经覆盖；反向路径如下：
+
+| 方法 | 路径 | 用途 |
+|---|---|---|
+| GET + Upgrade | `/v1/reverse` | WebSocket 隧道（`Sec-WebSocket-Protocol: dbbridge.reverse.v1.5`） |
+| POST | `/v1/reverse/{tunnel}/open` | 建立 SSE 或长轮询隧道 |
+| POST | `/v1/reverse/{tunnel}/up` | 数据库侧 → 公网侧的字节（≤ 128 KiB） |
+| GET | `/v1/reverse/{tunnel}/events` | 公网侧 → 数据库侧的字节，SSE |
+| GET | `/v1/reverse/{tunnel}/poll` | 同上，长轮询（约 25 秒内返回） |
+| DELETE | `/v1/reverse/{tunnel}` | 关闭隧道 |
+
+请原样转发 `Authorization`、`X-DBB-Node-ID`、`X-DBB-Expected-Node-ID`、`X-DBB-Instance-ID`、`X-DBB-Tunnel-ID`、`X-DBB-Tunnel-Priority`、`X-DBB-Reverse-Protocol`、`X-DBB-Tunnel-Transport`、`X-DBB-Offset`、`X-DBB-SHA256`、`X-DBB-Confirm-Up-Offset`、`X-DBB-Ack-Down-Offset`，以及响应头 `X-DBB-Node-ID`、`X-DBB-Instance-ID` 和 `Retry-After`。WebSocket 隧道是一条承载所有会话的长连接，代理的空闲超时必须大于 `heartbeat`，与会话相同；长轮询要求读超时大于 30 秒（上面的 120 秒即可）。同一数据库侧节点的所有隧道必须到达同一个公网侧进程：不要在没有会话保持的情况下把 `/v1/reverse/` 分散到多个后端。只有公网侧需要入站端口；数据库侧只需要出站 HTTPS（开启 `transport.use_environment_proxy` 时遵循 `HTTPS_PROXY`）。
 
 ## 8. TLS
 

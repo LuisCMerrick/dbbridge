@@ -64,6 +64,7 @@ dbbridge <command> [options]
 | `--recovery` | `true` | `--recovery=false` 在两个节点上关闭会话恢复。 |
 | `--allow-insecure-http` | 关 | 允许指向非回环主机的明文 `http://` 对端 URL（写入 `peers[].allow_insecure_http: true`）。 |
 | `--force` | 关 | 替换已有的配置（从不替换令牌）。Linux 上被替换的文件保留原有权限位和属主；Windows 上新文件使用受保护 DACL，需要重新授权。 |
+| `--reverse` | 关 | 反向模式，需配合 `--mode a-to-b` 或 `b-to-a`。有监听器的节点成为公网侧（一个 `mode: reverse` 的 peer，以及供隧道接入的 HTTP 监听，可使用 `--x-tls-cert`/`--x-tls-key`）；有数据库的节点成为数据库侧：不开监听端口，生成 `reverse` 段，其 endpoints 取自它的 `--x-peer-url`（默认是公网侧的 HTTP 监听地址），`reverse.transport` 取自 `--protocol`。 |
 | `--max-sessions` | `200` | 两个节点的 `limits.max_sessions`。双向模式下入站身份取其一半。需要时会写入足够的 `transport.metadata_limit`。 |
 | `--a-node-id`、`--b-node-id` | `A`、`B` | |
 | `--a-listen`、`--b-listen` | `127.0.0.1:13306`、`127.0.0.1:13307` | 各节点的本地 listener。 |
@@ -72,7 +73,7 @@ dbbridge <command> [options]
 | `--a-target-id`、`--b-target-id` | `mysql`、`mysql` | Target ID；对方节点的 listener 引用它。 |
 | `--a-target-address`、`--b-target-address` | `127.0.0.1:3306`、`127.0.0.1:3306` | 数据库地址。 |
 | `--a-allow-cidr`、`--b-allow-cidr` | 目标的精确 IP（`/32` 或 `/128`） | 可重复。主机名目标必须指定。 |
-| `--a-peer-url`、`--b-peer-url` | 对方节点的 HTTP 监听地址 | 可重复（故障切换 endpoint `link-1`、`link-2`……，优先级依次为 1、2……）。对方有证书时为 `https`；通配监听地址转换为回环地址。远程部署请显式指定。 |
+| `--a-peer-url`、`--b-peer-url` | 对方节点的 HTTP 监听地址 | 设在发起连接的节点上：Ingress，使用 `--reverse` 时为数据库侧。可重复（故障切换 endpoint `link-1`、`link-2`……，优先级依次为 1、2……）。对方有证书时为 `https`；通配监听地址转换为回环地址。远程部署请显式指定。 |
 | `--a-tls-cert`/`--a-tls-key`、`--b-tls-cert`/`--b-tls-key` | — | 节点入站 HTTPS 使用的现有证书和私钥；必须成对提供。 |
 
 生成的配置使用带令牌文件的内联凭据（重载时重新读取）、两个方向使用同一令牌、`tls.verify: true`、admin 在回环地址上，listener ID 为 `database-local`。令牌为 32 个随机字节的十六进制编码，权限 0600（Windows 上为受保护 DACL），其值从不输出。
@@ -89,17 +90,17 @@ dbbridge <command> [options]
 ### `version`
 
 ```
-dbbridge version <version> (commit: <commit>, built: <date>, runtime: <go version>, protocol: 1.4)
+dbbridge version <version> (commit: <commit>, built: <date>, runtime: <go version>, protocol: 1.5)
 ```
 
-发布构建带有发布版本号、源码标识和构建日期。直接 `go build` 时版本显示为 `1.4-dev`，提交和日期取自 Go 构建信息（无则为 `unknown`）。
+发布构建带有发布版本号、源码标识和构建日期。直接 `go build` 时版本显示为 `1.5-dev`，提交和日期取自 Go 构建信息（无则为 `unknown`）。
 
 ## 2. 退出码、信号与生命周期
 
 | 退出码 | 含义 |
 |---|---|
 | `0` | 成功，包括收到终止请求后正常停止。 |
-| `78` | `run`、`check-config` 或 `install` 遇到配置或凭据错误（错误码 `DBB-CFG-001` 至 `DBB-CFG-006`），包括 `--env-file` 无法使用。 |
+| `78` | `run`、`check-config` 或 `install` 遇到配置或凭据错误（错误码 `DBB-CFG-001` 至 `DBB-CFG-008`），包括 `--env-file` 无法使用。 |
 | `130` | 排空期间再次收到终止请求，强制退出。 |
 | `1` | 其他所有情况：命令行错误（未知命令、选项值无效）、启动失败（例如地址已被占用，`DBB-CFG-010`）、运行中出现致命故障（`DBB-CFG-011`）、非配置原因导致的服务安装/卸载失败（`DBB-CFG-030`）。 |
 
@@ -136,7 +137,7 @@ dbbridge version <version> (commit: <commit>, built: <date>, runtime: <go versio
 | 路径 | 应答 |
 |---|---|
 | `/healthz` | 进程运行时返回 `200 ok`。 |
-| `/readyz` | 启动成功后返回 `200 ready`；启动前、排空期间和致命故障后返回 `503 not ready`。 |
+| `/readyz` | 启动成功后返回 `200 ready`；启动前、排空期间和致命故障后返回 `503 not ready`。反向模式：开启 `reverse.enabled` 且未开启 `http.enabled` 的数据库侧，在没有存活隧道时返回 `503`（响应体附 `reverse: no tunnel to <peer_node_id>`）；开启了 `http.enabled` 时保持 `200`，只附加这一行。公网侧不会因缺少隧道变为未就绪，因为负载均衡一旦把它摘除，数据库侧也就无法接入；它只附加 `reverse peers without a tunnel: <ids>`。 |
 | `/metrics` | Prometheus 文本格式 0.0.4，渲染结果缓存 1 s。 |
 
 限制：最多 16 个并发连接（多余的直接关闭），读请求头超时 5 s，读/写超时 10 s，空闲超时 30 s，请求头 ≤ 8 KiB。
@@ -208,7 +209,22 @@ dbbridge version <version> (commit: <commit>, built: <date>, runtime: <go versio
 | `dbb_auth_reload_last_success_timestamp_seconds` | gauge | 两端 | 最近一次成功加载凭据的 Unix 时间。 |
 | `dbb_unbalanced_release_total` | counter | 两端 | 记账自检，应保持为 0。非零值表示存在值得报告的缺陷。 |
 
-**建议的告警。** `dbb_auth_credentials_stale == 1`；`/readyz` 不是 200；`rate(dbb_dial_failed_total[5m]) > 0`；`dbb_endpoint_state{state="MISMATCHED"} == 1`；`sessions`、`metadata`、`payload` 的 `dbb_resource_in_use / dbb_resource_limit > 0.9`；`dbb_terminated_*` 或 `dbb_resume_failed_total` 持续上升。
+### 反向隧道
+
+仅在使用反向模式的节点上输出：有 `mode: reverse` peer 的节点输出**公网侧**指标，开启 `reverse.enabled` 的节点输出**数据库侧**指标。
+
+| 指标 | 类型 | 侧 | 含义 |
+|---|---|---|---|
+| `dbb_reverse_hub_tunnels{peer,transport}` | gauge | 公网侧 | 每个反向 peer 当前存活的隧道数；`transport` ∈ `ws`、`http-sse`、`long-poll`。 |
+| `dbb_reverse_hub_accepted_total` | counter | 公网侧 | 已接受并注册的隧道数。 |
+| `dbb_reverse_hub_rejected_total{code}` | counter | 公网侧 | 被拒绝的隧道握手和 HTTP 隧道请求，按 DBBridge 错误码（`DBB_UNAUTHORIZED`、`DBB_NODE_MISMATCH`、`DBB_TUNNEL_CONFLICT`、`DBB_TUNNEL_NOT_FOUND` 等）。某个错误码首次出现后才有对应序列。 |
+| `dbb_reverse_tunnels{endpoint,transport}` | gauge | 数据库侧 | 到每个 `reverse.endpoints` 条目的存活隧道数。 |
+| `dbb_reverse_tunnel_established_total` | counter | 数据库侧 | 已建立的隧道数。 |
+| `dbb_reverse_tunnel_lost_total` | counter | 数据库侧 | 节点运行期间断开的已建立隧道数。 |
+| `dbb_reverse_tunnel_dial_failures_total` | counter | 数据库侧 | 隧道拨号失败次数（含回退后仍失败）。 |
+| `dbb_reverse_tunnel_fallback_total{from,to}` | counter | 数据库侧 | `auto` 的载体回退次数（`ws`→`http-sse`、`http-sse`→`long-poll`）。 |
+
+**建议的告警。** `dbb_auth_credentials_stale == 1`；`/readyz` 不是 200；`rate(dbb_dial_failed_total[5m]) > 0`；`dbb_endpoint_state{state="MISMATCHED"} == 1`；`sessions`、`metadata`、`payload` 的 `dbb_resource_in_use / dbb_resource_limit > 0.9`；`dbb_terminated_*` 或 `dbb_resume_failed_total` 持续上升。反向模式：公网侧 `sum(dbb_reverse_hub_tunnels{peer="..."}) == 0` 持续超过一分钟；`rate(dbb_reverse_tunnel_lost_total[5m]) > 0`；`dbb_reverse_hub_rejected_total{code=~"DBB_UNAUTHORIZED|DBB_NODE_MISMATCH"}` 有任何增长（有人用错误的令牌或身份拨入）；`dbb_reverse_tunnels{transport="long-poll"}` 非零（代理迫使隧道使用最慢的载体）。
 
 ## 6. 日志与事件
 
@@ -276,13 +292,15 @@ dbbridge version <version> (commit: <commit>, built: <date>, runtime: <go versio
 | `DBB_RESUME_IN_PROGRESS` | 409 | 是 | 该会话的另一次恢复正在进行。 |
 | `DBB_INSTANCE_MISMATCH` | 409 | 否 | Egress 进程已重启，会话无法继续。客户端需重连。 |
 | `DBB_NODE_MISMATCH` | 409 | 否 | Egress 的 `node.id` 与 `peers[].expected_node_id` 不符。请修正配置或 endpoint URL。 |
-| `DBB_PROTOCOL_MISMATCH` | 409 | 否 | 协议版本不是 1.4。 |
+| `DBB_PROTOCOL_MISMATCH` | 409 | 否 | 协议版本不是 1.5。 |
 | `DBB_RECOVERY_DISABLED` | 409 | 否 | 对未开启恢复而创建的会话请求恢复。 |
 | `DBB_RECOVERY_UNSUPPORTED` | 409 | 否 | 请求了恢复，但 Egress 关闭了恢复。请统一 `recovery.enabled`。 |
 | `DBB_FRAME_CONFLICT` | 409 / 410 | 否 | 数据或 FIN 与已收到的内容矛盾；会话被关闭。 |
 | `DBB_REPLAY_TOO_OLD` | 409 | 否 | 重放的帧早于保留的回执。 |
 | `DBB_WINDOW_EXCEEDED` | 409 | 是 | 在途帧过多。 |
-| `DBB_TRANSPORT_UNSUPPORTED` | 409 | 否 | 载体不在 `http.allowed_transports` 中（或缺少 WebSocket 子协议）。 |
+| `DBB_TRANSPORT_UNSUPPORTED` | 409（426） | 否 | 载体不在 `http.allowed_transports` 中（或缺少 WebSocket 子协议）。WebSocket 握手到达节点时已丢失升级头（被代理去掉）则返回 `426`。 |
+| `DBB_TUNNEL_CONFLICT` | 409 | 否 | 反向隧道被拒绝：隧道 ID 已注册，或同一数据库侧节点的另一个实例仍有存活隧道（这些隧道消失后即可接入，最迟在 `failure_detect_timeout` 之后）。两个数据库侧节点使用相同 `node.id` 时会一直出现。 |
+| `DBB_TUNNEL_NOT_FOUND` | 404 | 否 | 请求的 SSE 或长轮询反向隧道在公网侧已不存在；数据库侧会新建隧道。 |
 | `DBB_TRANSPORT_MISMATCH` | 409 | 否 | 请求使用的载体与会话的载体不同。 |
 | `DBB_SESSION_CLOSED` | 410 | 否 | 会话已结束。消息为 `session terminated: <category>`；`normal` 表示两个方向都已结束。 |
 | `DBB_BACKEND_LOST` | 410 | 否 | 数据库连接出错（重置或 EOF 以外的读错误）。数据库正常 EOF 属于 FIN，不是该错误码。 |
@@ -317,6 +335,8 @@ Egress 自己结束会话时，还会在该会话的载体上把终态码作为�
 | `DBB-CFG-004` | TLS：`http.tls` 证书/私钥或 `peers[].tls.ca_file` 无法加载。 | 78 |
 | `DBB-CFG-005` | 监听地址无效或冲突。 | 78 |
 | `DBB-CFG-006` | 服务凭据环境：`--env-file` 无法加载，或 `install` 需要的令牌变量缺失或格式错误。 | 78 |
+| `DBB-CFG-007` | Peer 模式：`peers[].mode` 无效、反向 peer 配置了 `endpoints`，或反向 peer 所在节点未开启 `http.enabled`。 | 78 |
+| `DBB-CFG-008` | `reverse` 段：缺少 `peer_node_id`、令牌或 endpoint，`reverse.transport` 无效，`tunnels_per_endpoint` 超出范围，非回环明文 endpoint 未显式允许，重连退避无效。 | 78 |
 | `DBB-CFG-010` | 节点启动失败（例如地址已被占用）。 | 1 |
 | `DBB-CFG-011` | 运行中出现致命故障。 | 1 |
 | `DBB-CFG-020` | 凭据重载被拒绝，保留之前的凭据（只写日志，节点继续运行）。原因见 `cause_code`。 | — |
@@ -361,7 +381,12 @@ Egress 元数据   = 可用元数据（配置 §14），双向节点再减去 1/
 | 希望用 WebSocket，但所有会话都在用 SSE | 代理拒绝或改动了升级请求 | 代理的 WebSocket 设置（[传输 §7](transport.zh-CN.md#7-反向代理与网关)）；`dbb_session_events_total{event="fallback"}`。 |
 | `dbb_endpoint_state{state="MISMATCHED"}` | URL 背后是错误的节点、协议违规、TLS 失败 | `expected_node_id`、证书主机名、会改写 WebSocket 消息的代理。 |
 | 日志中出现 `429 DBB_QUOTA_EXCEEDED` | 配额或预算耗尽（消息中写明名称） | §7 中的消息；`dbb_resource_in_use/limit`；§10。 |
-| `/readyz` 返回 503 | 正在启动、正在排空或出现致命故障 | 对应时间点的日志；`DBB-CFG-011`。 |
+| `/readyz` 返回 503 | 正在启动、正在排空或出现致命故障；只靠隧道的数据库侧没有存活隧道 | 对应时间点的日志；`DBB-CFG-011`；响应体中的 `reverse:` 行。 |
+| 反向 peer：连到公网侧的客户端立即被断开 | 数据库侧没有建立隧道 | `dbb_reverse_hub_tunnels`；数据库侧日志 `reverse tunnel dial failed`；数据库侧的出站防火墙或代理。 |
+| `reverse tunnel dial failed ... 401` / `dbb_reverse_hub_rejected_total{code="DBB_UNAUTHORIZED"}` | `reverse.token_file` 与公网侧该反向 peer 的令牌不一致 | 两侧令牌文件；重载状态。 |
+| `... 403 DBB_NODE_MISMATCH` 或 `tunnel peer node mismatch` | `reverse.peer_node_id` ≠ 公网侧 `node.id`，或数据库侧 `node.id` ≠ `peers[].expected_node_id` | 两侧节点 ID；endpoint URL 是否指向正确节点。 |
+| `409 DBB_TUNNEL_CONFLICT` 反复出现 | 两个数据库侧进程使用相同 `node.id` | 停掉重复的进程；正常重启后会在 `failure_detect_timeout` 内消失。 |
+| 反向隧道使用 `long-poll` | 代理拒绝 WebSocket 升级且缓冲 SSE | `dbb_reverse_tunnel_fallback_total`；代理设置（[传输 §7.1](transport.zh-CN.md#71-经代理的反向隧道)）。 |
 | 长时间空闲后会话中断 | 代理空闲超时小于心跳间隔，或 keep-alive 低于 60 s | 代理超时设置（[传输 §7](transport.zh-CN.md#7-反向代理与网关)）。 |
 | 更换令牌未生效 | 重载被拒绝，或令牌来自环境变量 | 日志 `DBB-CFG-020`；`dbb_auth_credentials_stale`；[安全 §3](security.zh-CN.md#3-令牌与凭据来源)。 |
 | `check-config` 通过，但服务拒绝重载 | 文件对服务不可见或不可读（沙箱、权限），或使用了新的变量名 | 把凭据文件放在配置文件旁边；检查权限；新变量名需重新安装。 |

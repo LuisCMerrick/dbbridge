@@ -23,7 +23,7 @@ func readyAfter(delay time.Duration) *httptest.Server {
 		}
 		defer c.Close()
 		time.Sleep(delay)
-		b, _ := json.Marshal(protocol.ReadyEventData{Type: "ready", ProtocolVersion: "1.4", SessionID: "s1", InstanceID: "bi", Epoch: "1", StreamID: "st", Transport: "ws"})
+		b, _ := json.Marshal(protocol.ReadyEventData{Type: "ready", ProtocolVersion: "1.5", SessionID: "s1", InstanceID: "bi", Epoch: "1", StreamID: "st", Transport: "ws"})
 		_ = c.WriteMessage(websocket.TextMessage, b)
 		time.Sleep(time.Second)
 	}))

@@ -26,7 +26,7 @@
 - SQL Server 命名实例通过 SQL Browser 服务（UDP 1434）定位，而 DBBridge 不转发 UDP：请为实例配置固定的 TCP 端口，并把它作为目标地址。
 - 数据库客户端连接的是本地 listener（例如 `127.0.0.1:13306`）。如果客户端要校验数据库的 TLS 证书，请在客户端中配置期望的服务器名称（例如驱动的“证书中的主机名”选项），因为连接的主机是回环地址。
 
-**协议。** 节点使用 DBBridge 协议 1.4。两端设置如何协商见[传输 §2](transport.zh-CN.md#2-协商值)。
+**协议。** 节点使用 DBBridge 协议 1.5。两端设置如何协商见[传输 §2](transport.zh-CN.md#2-协商值)。
 
 ## 2. 发布包与校验和
 
@@ -82,7 +82,7 @@ bash scripts/build-release.sh dist
 
 | 变量 | 默认值 | 作用 |
 |---|---|---|
-| `DBB_VERSION` | 源码日期（UTC）对应的 `1.4.<yy.mm.dd>` | 写入二进制和包名的版本号 |
+| `DBB_VERSION` | 源码日期（UTC）对应的 `1.5.<yy.mm.dd>` | 写入二进制和包名的版本号 |
 | `DBB_COMMIT` | `source-<源码的 sha256>` | `dbbridge version` 显示的源码标识 |
 | `SOURCE_DATE_EPOCH` | `HEAD` 的提交时间 | 构建日期和归档时间戳 |
 | `DBB_PLATFORMS` | `linux/amd64 linux/arm64 windows/amd64` | 以空格分隔的 `GOOS/GOARCH` 列表；其他目标不受支持 |

@@ -19,7 +19,7 @@ Every key mentioned here is listed with its type, default and constraints in the
 
 A session (one database client connection) travels over a **carrier**:
 
-- **`ws`** — one WebSocket per session, subprotocol `dbbridge.v1.4`, binary data frames in both directions plus text control messages.
+- **`ws`** — one WebSocket per session, subprotocol `dbbridge.v1.5`, binary data frames in both directions plus text control messages.
 - **`http-sse`** — upstream data as HTTP `POST /v1/sessions/{id}/up` requests (one frame each, with a SHA-256 digest header); downstream data and control events as a Server-Sent Events stream (`GET /v1/sessions/{id}/events`). Acknowledgements and FIN use separate control requests.
 
 Control operations (probe, create, ack, fin, resume, delete) always use their own HTTP connection pool, so they keep working while the data path is saturated.
@@ -53,7 +53,7 @@ The two nodes do not need identical `transport` sections. At session creation th
 | Recovery grace | The smaller of the two `recovery.grace` values. |
 | First attach | The ingress must attach a carrier within the egress's `unattached_timeout`; after that the egress discards the session and the ingress ends it with reason `timeout`. |
 | Carrier | Must be in the egress's `http.allowed_transports`, else `409 DBB_TRANSPORT_UNSUPPORTED`. |
-| Protocol version | Both must be `1.4`, else `409 DBB_PROTOCOL_MISMATCH`. |
+| Protocol version | Both must be `1.5`, else `409 DBB_PROTOCOL_MISMATCH`. |
 
 Keeping both nodes' `transport` sections the same makes behaviour easier to predict, but it is not required.
 
@@ -160,7 +160,7 @@ A reverse proxy, load balancer or API gateway may sit in front of the egress `ht
 
 **Response headers** — pass through `X-DBB-Instance-ID` (the ingress uses it to verify that an error answer really came from the peer) and `Retry-After`. Do not replace DBBridge error bodies with proxy error pages.
 
-**WebSocket** — forward the upgrade: `Upgrade`, `Connection`, `Sec-WebSocket-Key`, `Sec-WebSocket-Version`, `Sec-WebSocket-Protocol: dbbridge.v1.4` (and the response's `Sec-WebSocket-Protocol`). If the proxy cannot do this, use `auto` (sessions fall back to SSE) or `http-sse`.
+**WebSocket** — forward the upgrade: `Upgrade`, `Connection`, `Sec-WebSocket-Key`, `Sec-WebSocket-Version`, `Sec-WebSocket-Protocol: dbbridge.v1.5` (and the response's `Sec-WebSocket-Protocol`). If the proxy cannot do this, use `auto` (sessions fall back to SSE) or `http-sse`.
 
 **SSE** — do not buffer `GET /v1/sessions/{id}/events` responses (for nginx: `proxy_buffering off`), and do not buffer upstream POST bodies. Request bodies of `/up` are at most `max_frame_size` (256 KiB by default).
 
@@ -198,6 +198,21 @@ server {
 ```
 
 With the proxy terminating TLS, keep the egress `http.listen` on loopback (no `http.tls` needed) and point the ingress endpoint at `https://hq.example.com` (port 443, so no port in the URL).
+
+### 7.1 Reverse tunnels through a proxy
+
+In reverse mode ([Configuration §7.1](configuration.md#71-reverse-mode-peersmode-and-reverse)) the proxy sits in front of the **public side's** `http.listen`, and every request comes from the database side. The `location /v1/` block above already covers it; the reverse paths are:
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET + Upgrade | `/v1/reverse` | WebSocket tunnel (`Sec-WebSocket-Protocol: dbbridge.reverse.v1.5`) |
+| POST | `/v1/reverse/{tunnel}/open` | Open an SSE or long-polling tunnel |
+| POST | `/v1/reverse/{tunnel}/up` | Database side → public side bytes (≤ 128 KiB) |
+| GET | `/v1/reverse/{tunnel}/events` | Public side → database side bytes as SSE |
+| GET | `/v1/reverse/{tunnel}/poll` | The same by long polling (answers within about 25 s) |
+| DELETE | `/v1/reverse/{tunnel}` | Close the tunnel |
+
+Pass through `Authorization`, `X-DBB-Node-ID`, `X-DBB-Expected-Node-ID`, `X-DBB-Instance-ID`, `X-DBB-Tunnel-ID`, `X-DBB-Tunnel-Priority`, `X-DBB-Reverse-Protocol`, `X-DBB-Tunnel-Transport`, `X-DBB-Offset`, `X-DBB-SHA256`, `X-DBB-Confirm-Up-Offset`, `X-DBB-Ack-Down-Offset`, and the response headers `X-DBB-Node-ID`, `X-DBB-Instance-ID` and `Retry-After`. A WebSocket tunnel is one long-lived connection carrying every session, so the proxy's idle timeout must exceed `heartbeat`, as for sessions; a long poll needs a read timeout above 30 s (the 120 s above is fine). All tunnels of one database-side node must reach the same public-side process: do not spread `/v1/reverse/` over several backends without stickiness. Only the public side needs an inbound port; the database side needs outbound HTTPS (and honours `HTTPS_PROXY` with `transport.use_environment_proxy`).
 
 ## 8. TLS
 

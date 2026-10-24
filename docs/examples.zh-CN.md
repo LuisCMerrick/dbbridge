@@ -10,6 +10,8 @@
 - [2. 使用节点 TLS 与令牌文件的 Microsoft SQL Server](#2-使用节点-tls-与令牌文件的-microsoft-sql-server)
 - [3. 用 `gen-config` 生成双向节点对](#3-用-gen-config-生成双向节点对)
 - [4. 使用 TLS 与凭据文件的生产节点对](#4-使用-tls-与凭据文件的生产节点对)
+- [5. 反向模式：数据库在 NAT 之后](#5-反向模式数据库在-nat-之后)
+- [6. 同一节点上的正向与反向 peer](#6-同一节点上的正向与反向-peer)
 
 ## 1. 单向 MySQL：厂区 → 总部
 
@@ -227,7 +229,7 @@ targets:
   mssql: {network: tcp, address: "127.0.0.1:1433", allowed_cidrs: ["127.0.0.1/32"]}
 transport:
   protocol: auto
-  protocol_version: "1.4"
+  protocol_version: "1.5"
   recovery: {enabled: true, grace: 30s, barrier_timeout: 5s}
 ```
 
@@ -258,3 +260,111 @@ curl -s http://127.0.0.1:9080/readyz
 ```
 
 证书部署之前，可以用 `dbbridge check-config --offline -c peer-a.yaml` 检查结构、引用和监听地址，而不读取 TLS 文件和令牌。
+
+## 5. 反向模式：数据库在 NAT 之后
+
+应用运行在总部（`hq-b`，公网侧，经本机 TLS 代理以 `https://hq.example.com` 对外）；数据库在厂区（`plant-a`），只能主动往外连。`plant-a` 向 `hq-b` 建立隧道，自身不开任何端口；`hq-b` 的监听器经隧道访问厂区的 MySQL。详见[配置 §7.1](configuration.zh-CN.md#71-反向模式peersmode-与-reverse)。两端都必须运行协议 1.5。
+
+```yaml
+# hq-b.yaml（公网侧：应用所在，带反向 peer 的 Ingress）
+node:
+  id: hq-b
+
+http:
+  enabled: true                       # 隧道经由这里的 /v1/reverse 接入
+  listen: "127.0.0.1:18080"           # TLS 代理把 https://hq.example.com 转发到这里
+
+admin:
+  enabled: true
+  listen: "127.0.0.1:18090"
+
+peers:
+  - id: plant-a
+    mode: reverse                     # 不配置 endpoints：由 plant-a 拨入
+    expected_node_id: plant-a
+    credential_ref: plant-a
+    token_env: DBB_TOKEN_SECRET       # 同时用于校验 plant-a 的隧道
+
+listeners:
+  - id: mysql-plant
+    listen: "127.0.0.1:13306"
+    peer: plant-a
+    target: mysql-primary
+```
+
+```yaml
+# plant-a.yaml（NAT 之后的数据库侧：经隧道提供 Egress）
+node:
+  id: plant-a
+
+admin:
+  enabled: true
+  listen: "127.0.0.1:18090"
+
+reverse:
+  enabled: true
+  peer_node_id: hq-b
+  token_env: DBB_TOKEN_SECRET
+  transport: auto                     # 先 WebSocket，再 SSE，最后长轮询
+  tunnels_per_endpoint: 2
+  endpoints:
+    - id: primary
+      url: "https://hq.example.com"   # 证书必须与此名称匹配
+      priority: 1
+
+targets:
+  mysql-primary:
+    address: "127.0.0.1:3306"
+    allowed_cidrs: ["127.0.0.1/32"]
+
+auth:
+  inbound_peers:
+    - id: hq-b
+      token_envs: [DBB_TOKEN_SECRET]
+      allowed_targets: [mysql-primary]
+      max_sessions: 100
+```
+
+先启动 `hq-b`；`plant-a` 会一直重试直到连上。隧道建立后，`plant-a` 上的 `curl -s http://127.0.0.1:18090/readyz` 返回 `200 ready`，`hq-b` 上的 `dbb_reverse_hub_tunnels{peer="plant-a"}` 显示隧道数。`gen-config` 可以一步生成这样的配置对（有监听器的节点成为公网侧）：
+
+```bash
+dbbridge gen-config -o ./reverse --mode a-to-b --reverse \
+  --a-node-id hq-b --b-node-id plant-a \
+  --b-peer-url https://hq.example.com
+```
+
+## 6. 同一节点上的正向与反向 peer
+
+总部的一个节点按常规方式访问分支机构的数据库（正向：`hq-b` 拨 `branch-c`），同时经厂区建立的隧道访问厂区数据库（反向）。`branch-c` 的配置同示例 1，`plant-a` 的配置同示例 5。
+
+```yaml
+# hq-b.yaml（同时有正向和反向 peer 的 Ingress）
+node:
+  id: hq-b
+
+http:
+  enabled: true
+  listen: "127.0.0.1:18080"
+
+admin:
+  enabled: true
+  listen: "127.0.0.1:18090"
+
+peers:
+  - id: branch-c                      # 正向（默认）：hq-b 主动拨号
+    expected_node_id: branch-c
+    credential_ref: branch-c
+    token_env: DBB_TOKEN_BRANCH
+    endpoints:
+      - {id: primary, url: "https://branch.example.com", priority: 1}
+  - id: plant-a                       # 反向：plant-a 拨入
+    mode: reverse
+    expected_node_id: plant-a
+    credential_ref: plant-a
+    token_env: DBB_TOKEN_SECRET
+
+listeners:
+  - {id: mysql-branch, listen: "127.0.0.1:13306", peer: branch-c, target: mysql-primary}
+  - {id: mysql-plant, listen: "127.0.0.1:13307", peer: plant-a, target: mysql-primary}
+```
+

@@ -59,7 +59,7 @@ func TestBoundaryRemoteBackpressureReadDoesNotExpireDetectTimer(t *testing.T) {
 				return
 			}
 			defer c.Close()
-			c.WriteJSON(protocol.ReadyEventData{Type: "ready", ProtocolVersion: "1.4", SessionID: "sid", InstanceID: "bi", Epoch: "1", StreamID: "stream", Transport: "ws"})
+			c.WriteJSON(protocol.ReadyEventData{Type: "ready", ProtocolVersion: "1.5", SessionID: "sid", InstanceID: "bi", Epoch: "1", StreamID: "stream", Transport: "ws"})
 			<-closeServer
 			return
 		}
@@ -110,7 +110,7 @@ func TestBoundaryCachedPrecheckInvalidatedAfterTokenChange(t *testing.T) {
 			return
 		}
 		defer c.Close()
-		c.WriteJSON(protocol.WSHelloMessage{Type: "hello", ProtocolVersion: "1.4", NodeID: "B", InstanceID: "bi", Nonce: r.Header.Get(protocol.HeaderWSNonce), Transport: "ws"})
+		c.WriteJSON(protocol.WSHelloMessage{Type: "hello", ProtocolVersion: "1.5", NodeID: "B", InstanceID: "bi", Nonce: r.Header.Get(protocol.HeaderWSNonce), Transport: "ws"})
 	}))
 	defer ts.Close()
 	m, p := testChooser(t, ts.URL)

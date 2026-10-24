@@ -28,7 +28,7 @@ func TestRejectRedirect(t *testing.T) {
 	var leaked string
 	dst := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		leaked = r.Header.Get("Authorization")
-		json.NewEncoder(w).Encode(protocol.ProbeResponse{ProtocolVersion: "1.4"})
+		json.NewEncoder(w).Encode(protocol.ProbeResponse{ProtocolVersion: "1.5"})
 	}))
 	defer dst.Close()
 	src := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -68,7 +68,7 @@ func TestWSSessionReadLimit(t *testing.T) {
 			return
 		}
 		defer conn.Close()
-		conn.WriteJSON(protocol.ReadyEventData{Type: "ready", ProtocolVersion: "1.4", SessionID: "sid", InstanceID: "inst", StreamID: "st", Epoch: "1", Transport: "ws"})
+		conn.WriteJSON(protocol.ReadyEventData{Type: "ready", ProtocolVersion: "1.5", SessionID: "sid", InstanceID: "inst", StreamID: "st", Epoch: "1", Transport: "ws"})
 		conn.WriteMessage(websocket.BinaryMessage, make([]byte, 2*1024*1024))
 	}))
 	defer s.Close()

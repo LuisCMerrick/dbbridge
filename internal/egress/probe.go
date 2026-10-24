@@ -29,7 +29,7 @@ func (s *Server) handleProbe(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &q) {
 		return
 	}
-	if q.ProtocolVersion != "1.4" {
+	if q.ProtocolVersion != protocol.ProtocolVersionString {
 		writeJSONError(w, 409, protocol.ErrProtocolMismatch, "protocol", false, false)
 		return
 	}
@@ -41,7 +41,7 @@ func (s *Server) handleProbe(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, 400, protocol.ErrBadFrame, "nonce", false, false)
 		return
 	}
-	writeJSON(w, 200, protocol.ProbeResponse{ProtocolVersion: "1.4", NodeID: s.cfg.Node.ID, InstanceID: s.cfg.Node.InstanceID, Nonce: q.Nonce, RecoveryAvailable: s.cfg.Transport.Recovery.Enabled, AcceptingNewSessions: s.registry.Accepting(), Transports: s.transports()})
+	writeJSON(w, 200, protocol.ProbeResponse{ProtocolVersion: protocol.ProtocolVersionString, NodeID: s.cfg.Node.ID, InstanceID: s.cfg.Node.InstanceID, Nonce: q.Nonce, RecoveryAvailable: s.cfg.Transport.Recovery.Enabled, AcceptingNewSessions: s.registry.Accepting(), Transports: s.transports()})
 }
 
 func (s *Server) transports() []string {

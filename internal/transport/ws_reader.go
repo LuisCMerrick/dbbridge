@@ -35,9 +35,14 @@ func ReadWSMessageWithProgress(parent context.Context, c *websocket.Conn, budget
 // verification, while reassembly is always released by the transport reader.
 func ReadWSMessageWithPayload(parent context.Context, c *websocket.Conn, budget, raw *resource.Budget, max int, stall time.Duration, progress func(), blocked func(bool)) (kind int, payload []byte, release, releasePayload func(), err error) {
 	var expired, waiting atomic.Bool
+	var pr *progressReader
 	defer func() {
 		if err != nil && expired.Load() && parent.Err() == nil {
 			err = ErrBackpressure
+		} else if pr != nil && pr.ended && (errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, io.EOF)) {
+			// The message reader reached the end of a complete WebSocket
+			// message before the DBBridge frame it carries was complete.
+			err = ErrProtocol
 		} else {
 			err = classifyWSReadError(err)
 		}
@@ -60,7 +65,7 @@ func ReadWSMessageWithPayload(parent context.Context, c *websocket.Conn, budget,
 		timer = time.AfterFunc(stall, func() { expired.Store(waiting.Load()); cancel() })
 		defer timer.Stop()
 	}
-	r = &progressReader{Reader: r, onProgress: func() {
+	pr = &progressReader{Reader: r, onProgress: func() {
 		if timer != nil {
 			timer.Reset(stall)
 		}
@@ -68,6 +73,7 @@ func ReadWSMessageWithPayload(parent context.Context, c *websocket.Conn, budget,
 			progress()
 		}
 	}}
+	r = pr
 	// take reports blocked only while it actually has to wait for budget.
 	take := func(b *resource.Budget, n int64) error {
 		if b.Try(n) {
@@ -146,11 +152,24 @@ func ReadWSMessageWithPayload(parent context.Context, c *websocket.Conn, budget,
 }
 
 // Gorilla uses CloseError for a lost socket, including a truncated wire frame.
-// EOF from its message reader instead marks a complete WebSocket message whose
-// DBBridge payload ended early. Its local framing errors have no exported type.
+// A bare io.ErrUnexpectedEOF comes from below gorilla: crypto/tls reports a
+// record cut short by the end of the connection that way. Over TCP a lost
+// carrier usually shows as a reset, but over a reverse tunnel stream it is a
+// clean end of stream mid-record, so it is a lost carrier, never a framing
+// violation. (A complete WebSocket message whose DBBridge payload ended early
+// is recognised by ReadWSMessageWithPayload itself, from its message reader
+// reaching the end.) Gorilla's local framing errors have no exported type.
 func classifyWSReadError(err error) error {
 	if err == nil {
 		return nil
+	}
+	// ErrCloseSent from the reader: the peer's close frame arrived after this
+	// side had already sent its own, and gorilla's reply to it failed. The
+	// socket is closing on both sides; that is a lost carrier, never a
+	// framing violation. (Seen over reverse tunnels, which deliver the
+	// peer's close frame where a TCP reset would have dropped it.)
+	if errors.Is(err, websocket.ErrCloseSent) {
+		return err
 	}
 	var closed *websocket.CloseError
 	if errors.As(err, &closed) {
@@ -159,7 +178,10 @@ func classifyWSReadError(err error) error {
 		}
 		return err
 	}
-	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, websocket.ErrReadLimit) || strings.HasPrefix(err.Error(), "websocket: ") {
+	if errors.Is(err, io.ErrUnexpectedEOF) {
+		return err
+	}
+	if errors.Is(err, io.EOF) || errors.Is(err, websocket.ErrReadLimit) || strings.HasPrefix(err.Error(), "websocket: ") {
 		return ErrProtocol
 	}
 	return err
@@ -168,12 +190,16 @@ func classifyWSReadError(err error) error {
 type progressReader struct {
 	io.Reader
 	onProgress func()
+	ended      bool // the message reader reported the end of the message
 }
 
 func (r *progressReader) Read(p []byte) (int, error) {
 	n, e := r.Reader.Read(p)
 	if n > 0 {
 		r.onProgress()
+	}
+	if e == io.EOF {
+		r.ended = true
 	}
 	return n, e
 }

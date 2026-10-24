@@ -142,7 +142,7 @@ func wsURLOf(base string) string {
 // wsCreate creates a WS-mode session for token.
 func wsCreate(t *testing.T, url, token, id string) protocol.CreateSessionResponse {
 	t.Helper()
-	b, _ := json.Marshal(protocol.CreateSessionRequest{Limits: protocol.SessionLimits{MaxFrameSize: 1024, UpMaxInflightFrames: 8, UpWindowBytes: 2048, DownBufferBytes: 4096}, ProtocolVersion: "1.4", IngressInstanceID: "ai", CreateRequestID: id, TargetID: "db", Transport: protocol.TransportMode{Mode: "ws"}})
+	b, _ := json.Marshal(protocol.CreateSessionRequest{Limits: protocol.SessionLimits{MaxFrameSize: 1024, UpMaxInflightFrames: 8, UpWindowBytes: 2048, DownBufferBytes: 4096}, ProtocolVersion: "1.5", IngressInstanceID: "ai", CreateRequestID: id, TargetID: "db", Transport: protocol.TransportMode{Mode: "ws"}})
 	r, _ := http.NewRequest("POST", url+"/v1/sessions", bytes.NewReader(b))
 	r.Header.Set("Authorization", "Bearer "+token)
 	r.Header.Set(protocol.HeaderInstanceID, "bi")

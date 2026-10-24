@@ -29,7 +29,7 @@ func TestInvalidPrecheckMustNotPermitFallback(t *testing.T) {
 					_ = c.WriteMessage(websocket.TextMessage, []byte(`{"type":"hello","type":"hello"}`))
 					return
 				}
-				h := protocol.WSHelloMessage{Type: "hello", ProtocolVersion: "1.4", NodeID: "B", InstanceID: "bi", Nonce: r.Header.Get(protocol.HeaderWSNonce), Transport: "ws"}
+				h := protocol.WSHelloMessage{Type: "hello", ProtocolVersion: "1.5", NodeID: "B", InstanceID: "bi", Nonce: r.Header.Get(protocol.HeaderWSNonce), Transport: "ws"}
 				if kind == "protocol_version" {
 					h.ProtocolVersion = "1.3"
 				}

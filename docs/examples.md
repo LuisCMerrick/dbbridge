@@ -10,6 +10,8 @@ Every configuration on this page passes `dbbridge check-config` with the token f
 - [2. Microsoft SQL Server with node TLS and token files](#2-microsoft-sql-server-with-node-tls-and-token-files)
 - [3. Bidirectional pair with `gen-config`](#3-bidirectional-pair-with-gen-config)
 - [4. Production pair with TLS and a credentials file](#4-production-pair-with-tls-and-a-credentials-file)
+- [5. Reverse mode: database behind NAT](#5-reverse-mode-database-behind-nat)
+- [6. Forward and reverse peers on one node](#6-forward-and-reverse-peers-on-one-node)
 
 ## 1. One-way MySQL: plant → headquarters
 
@@ -231,7 +233,7 @@ targets:
   mssql: {network: tcp, address: "127.0.0.1:1433", allowed_cidrs: ["127.0.0.1/32"]}
 transport:
   protocol: auto
-  protocol_version: "1.4"
+  protocol_version: "1.5"
   recovery: {enabled: true, grace: 30s, barrier_timeout: 5s}
 ```
 
@@ -262,3 +264,119 @@ curl -s http://127.0.0.1:9080/readyz
 ```
 
 Before the certificates are deployed, `dbbridge check-config --offline -c peer-a.yaml` checks structure, references and listen addresses without reading TLS files or tokens.
+
+## 5. Reverse mode: database behind NAT
+
+<!-- example:reverse-pair -->
+
+The applications run at headquarters (`hq-b`, public, reachable at `https://hq.example.com` through a local TLS proxy); the database is at the plant (`plant-a`), which can only connect out. `plant-a` dials a tunnel to `hq-b` and opens no port of its own; `hq-b`'s listener reaches the plant's MySQL through the tunnel. See [Configuration §7.1](configuration.md#71-reverse-mode-peersmode-and-reverse). Both nodes must run protocol 1.5.
+
+```yaml
+# hq-b.yaml (public side: applications, ingress with a reverse peer)
+node:
+  id: hq-b
+
+http:
+  enabled: true                       # the tunnels arrive at /v1/reverse here
+  listen: "127.0.0.1:18080"           # the TLS proxy forwards https://hq.example.com here
+
+admin:
+  enabled: true
+  listen: "127.0.0.1:18090"
+
+peers:
+  - id: plant-a
+    mode: reverse                     # no endpoints: plant-a dials in
+    expected_node_id: plant-a
+    credential_ref: plant-a
+    token_env: DBB_TOKEN_SECRET       # also authenticates plant-a's tunnels
+
+listeners:
+  - id: mysql-plant
+    listen: "127.0.0.1:13306"
+    peer: plant-a
+    target: mysql-primary
+```
+
+```yaml
+# plant-a.yaml (database side behind NAT: egress over the tunnel)
+node:
+  id: plant-a
+
+admin:
+  enabled: true
+  listen: "127.0.0.1:18090"
+
+reverse:
+  enabled: true
+  peer_node_id: hq-b
+  token_env: DBB_TOKEN_SECRET
+  transport: auto                     # WebSocket, then SSE, then long polling
+  tunnels_per_endpoint: 2
+  endpoints:
+    - id: primary
+      url: "https://hq.example.com"   # certificate must match this name
+      priority: 1
+
+targets:
+  mysql-primary:
+    address: "127.0.0.1:3306"
+    allowed_cidrs: ["127.0.0.1/32"]
+
+auth:
+  inbound_peers:
+    - id: hq-b
+      token_envs: [DBB_TOKEN_SECRET]
+      allowed_targets: [mysql-primary]
+      max_sessions: 100
+```
+
+<!-- /example:reverse-pair -->
+
+Start `hq-b` first; `plant-a` keeps retrying until it can reach it. `curl -s http://127.0.0.1:18090/readyz` on `plant-a` answers `200 ready` once a tunnel is up, and `dbb_reverse_hub_tunnels{peer="plant-a"}` on `hq-b` shows the tunnels. `gen-config` writes such a pair in one step (the node with the listener becomes the public side):
+
+```bash
+dbbridge gen-config -o ./reverse --mode a-to-b --reverse \
+  --a-node-id hq-b --b-node-id plant-a \
+  --b-peer-url https://hq.example.com
+```
+
+## 6. Forward and reverse peers on one node
+
+<!-- example:mixed-node -->
+
+One headquarters node reaches a branch database the usual way (forward: `hq-b` dials `branch-c`) and the plant database through the plant's tunnel (reverse). `branch-c` is configured as in example 1 and `plant-a` as in example 5.
+
+```yaml
+# hq-b.yaml (ingress with a forward and a reverse peer)
+node:
+  id: hq-b
+
+http:
+  enabled: true
+  listen: "127.0.0.1:18080"
+
+admin:
+  enabled: true
+  listen: "127.0.0.1:18090"
+
+peers:
+  - id: branch-c                      # forward (the default): hq-b dials it
+    expected_node_id: branch-c
+    credential_ref: branch-c
+    token_env: DBB_TOKEN_BRANCH
+    endpoints:
+      - {id: primary, url: "https://branch.example.com", priority: 1}
+  - id: plant-a                       # reverse: plant-a dials in
+    mode: reverse
+    expected_node_id: plant-a
+    credential_ref: plant-a
+    token_env: DBB_TOKEN_SECRET
+
+listeners:
+  - {id: mysql-branch, listen: "127.0.0.1:13306", peer: branch-c, target: mysql-primary}
+  - {id: mysql-plant, listen: "127.0.0.1:13307", peer: plant-a, target: mysql-primary}
+```
+
+<!-- /example:mixed-node -->
+

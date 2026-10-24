@@ -64,7 +64,7 @@ func TestBoundarySmallFrameStillAllowsTextControls(t *testing.T) {
 			return
 		}
 		defer c.Close()
-		c.WriteJSON(protocol.ReadyEventData{Type: "ready", ProtocolVersion: "1.4", SessionID: "sid", InstanceID: "bi", Epoch: "1", StreamID: "stream", Transport: "ws"})
+		c.WriteJSON(protocol.ReadyEventData{Type: "ready", ProtocolVersion: "1.5", SessionID: "sid", InstanceID: "bi", Epoch: "1", StreamID: "stream", Transport: "ws"})
 		c.WriteJSON(protocol.WSTextControlMessage{Type: "ping", SessionID: "sid", InstanceID: "bi", Epoch: "1", StreamID: "stream", Nonce: "0123456789abcdef0123456789abcdef"})
 		<-stop
 	}))

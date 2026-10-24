@@ -119,7 +119,7 @@ func e2eIngress(t *testing.T, mode, special string) *e2eEnv {
 			if special == "ws_to_sse" && e.switched.Load() || special == "sse_to_ws" && !e.switched.Load() {
 				modes = []string{"http-sse"}
 			}
-			json.NewEncoder(w).Encode(protocol.ProbeResponse{ProtocolVersion: "1.4", NodeID: "B", InstanceID: b.Node.InstanceID, Nonce: pr.Nonce, AcceptingNewSessions: true, RecoveryAvailable: true, Transports: modes})
+			json.NewEncoder(w).Encode(protocol.ProbeResponse{ProtocolVersion: "1.5", NodeID: "B", InstanceID: b.Node.InstanceID, Nonce: pr.Nonce, AcceptingNewSessions: true, RecoveryAvailable: true, Transports: modes})
 			return
 		}
 		if special == "drop_resume" && strings.HasSuffix(r.URL.Path, "/resume") && !e.switched.Swap(true) {
@@ -142,7 +142,7 @@ func e2eIngress(t *testing.T, mode, special string) *e2eEnv {
 				u := websocket.Upgrader{Subprotocols: []string{protocol.SecWebSocketProtocol}}
 				c, err := u.Upgrade(w, r, nil)
 				if err == nil {
-					c.WriteJSON(protocol.WSHelloMessage{Type: "hello", ProtocolVersion: "1.4", NodeID: "WRONG", InstanceID: b.Node.InstanceID, Nonce: r.Header.Get(protocol.HeaderWSNonce), Transport: "ws"})
+					c.WriteJSON(protocol.WSHelloMessage{Type: "hello", ProtocolVersion: "1.5", NodeID: "WRONG", InstanceID: b.Node.InstanceID, Nonce: r.Header.Get(protocol.HeaderWSNonce), Transport: "ws"})
 					c.Close()
 				}
 				return
@@ -169,7 +169,7 @@ func e2eIngress(t *testing.T, mode, special string) *e2eEnv {
 			s := e.reg.Get(id)
 			stream, _ := s.ReserveStream(1, "http-sse")
 			w.Header().Set("Content-Type", "text/event-stream")
-			j, _ := json.Marshal(protocol.ReadyEventData{Type: "ready", ProtocolVersion: "1.4", SessionID: id, InstanceID: b.Node.InstanceID, Epoch: "1", StreamID: stream, Transport: "http-sse"})
+			j, _ := json.Marshal(protocol.ReadyEventData{Type: "ready", ProtocolVersion: "1.5", SessionID: id, InstanceID: b.Node.InstanceID, Epoch: "1", StreamID: stream, Transport: "http-sse"})
 			fmt.Fprintf(w, "event: ready\ndata: %s\n\n", j)
 			w.(http.Flusher).Flush()
 			if special == "eof_stream" {

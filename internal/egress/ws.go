@@ -80,7 +80,7 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 		defer c.Close()
 		c.SetReadLimit(16 << 10)
 		c.SetWriteDeadline(time.Now().Add(time.Second))
-		_ = c.WriteJSON(protocol.WSHelloMessage{Type: "hello", ProtocolVersion: "1.4", NodeID: s.cfg.Node.ID, InstanceID: s.cfg.Node.InstanceID, Nonce: nonce, Transport: "ws"})
+		_ = c.WriteJSON(protocol.WSHelloMessage{Type: "hello", ProtocolVersion: protocol.ProtocolVersionString, NodeID: s.cfg.Node.ID, InstanceID: s.cfg.Node.InstanceID, Nonce: nonce, Transport: "ws"})
 		_ = c.SetReadDeadline(time.Now().Add(time.Second))
 		_, _, _ = c.ReadMessage()
 		return

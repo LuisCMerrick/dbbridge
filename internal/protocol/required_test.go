@@ -7,7 +7,7 @@ import (
 )
 
 func TestRequiredJSONFieldsAndOptionalFIN(t *testing.T) {
-	request := CreateSessionRequest{ProtocolVersion: "1.4", Transport: TransportMode{Mode: "ws"}, Recovery: RecoveryNegotiation{}, CreateRequestID: "create", IngressInstanceID: "ai", TargetID: "db", Limits: SessionLimits{MaxFrameSize: 1024, UpMaxInflightFrames: 8, UpWindowBytes: 1024, DownBufferBytes: 1024}}
+	request := CreateSessionRequest{ProtocolVersion: "1.5", Transport: TransportMode{Mode: "ws"}, Recovery: RecoveryNegotiation{}, CreateRequestID: "create", IngressInstanceID: "ai", TargetID: "db", Limits: SessionLimits{MaxFrameSize: 1024, UpMaxInflightFrames: 8, UpWindowBytes: 1024, DownBufferBytes: 1024}}
 	b, _ := json.Marshal(request)
 	for _, name := range []string{"protocol_version", "transport", "recovery", "create_request_id", "ingress_instance_id", "target_id", "limits"} {
 		t.Run(name, func(t *testing.T) {
@@ -30,7 +30,7 @@ func TestRequiredJSONFieldsAndOptionalFIN(t *testing.T) {
 		t.Fatal("missing grace_ms accepted")
 	}
 	var ready ReadyEventData
-	if err := DecodeJSON(bytes.NewBufferString(`{"type":"ready","protocol_version":"1.4","session_id":"s","instance_id":"bi","epoch":"1","stream_id":"st","transport":"ws","resume_request_id":null}`), 16384, &ready); err != nil {
+	if err := DecodeJSON(bytes.NewBufferString(`{"type":"ready","protocol_version":"1.5","session_id":"s","instance_id":"bi","epoch":"1","stream_id":"st","transport":"ws","resume_request_id":null}`), 16384, &ready); err != nil {
 		t.Fatalf("explicit nullable initial resume ID: %v", err)
 	}
 }

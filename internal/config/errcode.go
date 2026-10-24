@@ -24,6 +24,15 @@ const (
 	// loaded or a credential environment variable needed for installation is
 	// missing.
 	CodeEnvironment = "DBB-CFG-006"
+	// CodePeerMode: peers[].mode is invalid or does not match the peer's
+	// other settings (a reverse peer with endpoints, a reverse peer on a
+	// node without http.enabled).
+	CodePeerMode = "DBB-CFG-007"
+	// CodeReverse: the reverse section (database-side tunnel dialer) is
+	// invalid: no endpoints, no token, no peer_node_id, an unknown tunnel
+	// transport, a plaintext non-loopback endpoint without opt-in, or an
+	// invalid reconnect backoff.
+	CodeReverse = "DBB-CFG-008"
 	// CodeStartFailed: the node failed to start (for example a listen
 	// address is already in use).
 	CodeStartFailed = "DBB-CFG-010"

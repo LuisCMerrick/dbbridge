@@ -10,7 +10,7 @@ import (
 )
 
 func (s *Server) ready(sess *session.Session, ep uint64, stream, mode string) protocol.ReadyEventData {
-	return protocol.ReadyEventData{Type: "ready", ProtocolVersion: "1.4", SessionID: sess.ID, InstanceID: sess.InstanceID, Epoch: strconv.FormatUint(ep, 10), StreamID: stream, Transport: mode, ResumeRequestID: sess.LastResumeRequestID()}
+	return protocol.ReadyEventData{Type: "ready", ProtocolVersion: protocol.ProtocolVersionString, SessionID: sess.ID, InstanceID: sess.InstanceID, Epoch: strconv.FormatUint(ep, 10), StreamID: stream, Transport: mode, ResumeRequestID: sess.LastResumeRequestID()}
 }
 
 func (s *Server) control(sess *session.Session, ep uint64, stream, kind string) protocol.WSTextControlMessage {

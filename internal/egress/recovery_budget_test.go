@@ -17,7 +17,7 @@ import (
 
 func TestCreateRequiresRecoveryObject(t *testing.T) {
 	srv, _, _, dials := boundaryServer(t)
-	q := protocol.CreateSessionRequest{ProtocolVersion: "1.4", Transport: protocol.TransportMode{Mode: "ws"}, CreateRequestID: "missing-recovery", IngressInstanceID: "ai", TargetID: "db", Limits: protocol.SessionLimits{MaxFrameSize: 1024, UpMaxInflightFrames: 8, UpWindowBytes: 1024, DownBufferBytes: 1024}}
+	q := protocol.CreateSessionRequest{ProtocolVersion: "1.5", Transport: protocol.TransportMode{Mode: "ws"}, CreateRequestID: "missing-recovery", IngressInstanceID: "ai", TargetID: "db", Limits: protocol.SessionLimits{MaxFrameSize: 1024, UpMaxInflightFrames: 8, UpWindowBytes: 1024, DownBufferBytes: 1024}}
 	encoded, _ := json.Marshal(q)
 	var object map[string]any
 	json.Unmarshal(encoded, &object)
@@ -39,7 +39,7 @@ func TestRejectedCreateMetadataBudget(t *testing.T) {
 	const count = 32
 	target := strings.Repeat("x", 12<<10)
 	for i := 0; i < count; i++ {
-		q := protocol.CreateSessionRequest{ProtocolVersion: "1.4", Transport: protocol.TransportMode{Mode: "ws"}, CreateRequestID: fmt.Sprintf("rejected-%d", i), IngressInstanceID: "ai", TargetID: target, Limits: protocol.SessionLimits{MaxFrameSize: 1024, UpMaxInflightFrames: 8, UpWindowBytes: 1024, DownBufferBytes: 1024}}
+		q := protocol.CreateSessionRequest{ProtocolVersion: "1.5", Transport: protocol.TransportMode{Mode: "ws"}, CreateRequestID: fmt.Sprintf("rejected-%d", i), IngressInstanceID: "ai", TargetID: target, Limits: protocol.SessionLimits{MaxFrameSize: 1024, UpMaxInflightFrames: 8, UpWindowBytes: 1024, DownBufferBytes: 1024}}
 		body, _ := json.Marshal(q)
 		r := httptest.NewRequest("POST", "/v1/sessions", bytes.NewReader(body))
 		r.Header.Set("Authorization", "Bearer token")

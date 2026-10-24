@@ -27,7 +27,7 @@ This page lists every configuration key with its type, default and constraints. 
 
 - The configuration is one YAML document of at most 4 MiB; a credentials file is at most 1 MiB, a CA bundle at most 1 MiB. YAML nesting is limited to 32 levels.
 - Unknown keys are rejected (`field "x" not found in config.http`).
-- Types are strict: strings must be YAML strings (`protocol_version: 1.4` without quotes is rejected; write `"1.4"`), booleans must be `true`/`false`, integers must be integers.
+- Types are strict: strings must be YAML strings (`protocol_version: 1.5` without quotes is rejected; write `"1.5"`), booleans must be `true`/`false`, integers must be integers.
 - An explicit `null` (`key:` with no value, or `~`) is rejected. Omit an optional key to get its default.
 - **Sizes** are an integer number of bytes or a string `<digits>[ ]<unit>` with the unit `B`, `K`/`KB`/`KiB`, `M`/`MB`/`MiB` or `G`/`GB`/`GiB` (case-insensitive). All units are powers of 1024 (`1MB` = `1MiB` = 1,048,576 bytes). Decimals (`1.5MiB`) and `T` are not accepted.
 - **Durations** are a Go duration string (`200ms`, `1m30s`; `h`, `m`, `s`, `ms`, `us`, `ns`; no `d`) or a YAML number meaning seconds (`5`, `0.5` = 500 ms). Negative values, NaN, infinity and overflowing values are rejected.
@@ -44,14 +44,15 @@ node:        # identity of this node
 http:        # inbound peer server (egress role): HTTP, WebSocket, SSE
 admin:       # loopback /healthz, /readyz, /metrics
 auth:        # inbound identities, target ACLs, credentials file
-peers:       # outbound peers (ingress role): endpoints, failover, TLS, token
+peers:       # outbound peers (ingress role): endpoints, failover, TLS, token; mode: reverse peers dial in
 listeners:   # local TCP entry points for database clients
 targets:     # databases this node may dial (egress role)
+reverse:     # database side of reverse mode: dials the tunnel out (§7.1)
 limits:      # session and endpoint limits
 transport:   # carriers, flow control, recovery, budgets, timeouts
 ```
 
-A node is an **ingress** when it has `listeners` and `peers`, an **egress** when `http.enabled: true` and it has `targets`, and **bidirectional** when it is both. The same binary serves every role.
+A node is an **ingress** when it has `listeners` and `peers`, an **egress** when `http.enabled: true` (or `reverse.enabled: true`) and it has `targets`, and **bidirectional** when it is both. The same binary serves every role.
 
 ## 3. `node`
 
@@ -158,11 +159,12 @@ Outbound peers (ingress role). Each peer is the other node, reached through one 
 | Key | Type | Default | Constraints |
 |---|---|---|---|
 | `id` | string | — | Required, unique. Local name of the other node, used by `listeners[].peer`, logs and metric labels. By convention it is the other node's `node.id`. |
+| `mode` | string | `forward` | `forward` or `reverse`; see §7.1. |
 | `expected_node_id` | string | — | Required; must differ from this node's `node.id`. The other node's `node.id` is verified on every probe. |
 | `credential_ref` | string | — | Required, also with a direct token. With `auth.credentials_file` it selects the `outbound_peers[]` entry. |
 | `token_file` | path | — | Bearer token sent to this peer. Exactly one of `token_file`/`token_env` unless `auth.credentials_file` is used (then neither is allowed). |
 | `token_env` | name | — | As above, from an environment variable. |
-| `endpoints` | list | — | 1 to `limits.max_endpoints_per_peer` entries. |
+| `endpoints` | list | — | 1 to `limits.max_endpoints_per_peer` entries for a forward peer; not allowed for a reverse peer. |
 | `endpoints[].id` | string | — | Required, unique within the peer. |
 | `endpoints[].url` | string | — | An `http://` or `https://` origin only: no user info, path (not even `/`), query or fragment; port 1–65535 when given. Host names are lower-cased and default ports dropped; duplicates after this normalisation are rejected. Plain `http://` to a non-loopback host requires `allow_insecure_http: true`. |
 | `endpoints[].priority` | int | `0` | ≥ 0; lower is preferred. Set it explicitly on every endpoint: an omitted priority (0) beats an explicit 1. |
@@ -183,6 +185,47 @@ Outbound peers (ingress role). Each peer is the other node, reached through one 
 | `allow_insecure_http` | bool | `false` | Allows plaintext `http://` endpoints of this peer on non-loopback hosts. Affects only outbound connections. |
 
 How the two nodes' settings meet is described in [Transport → Negotiated values](transport.md#2-negotiated-values).
+
+### 7.1 Reverse mode (`peers[].mode` and `reverse`)
+
+Reverse mode is for a database side behind NAT or a firewall that can only connect out: the database-side node (egress role) dials the public-side node (ingress role) and keeps a long-lived tunnel, and all DBBridge traffic runs inside it. Each peer chooses its mode; one node can have forward and reverse peers at the same time. Both nodes must speak protocol 1.5.
+
+Tunnels run over WebSocket, SSE or long polling, with `auto` falling back in that order. `dbbridge gen-config --reverse` writes a matching pair ([Operations §1](operations.md#gen-config)); tunnel metrics and the `/readyz` rules are in [Operations §4–5](operations.md#4-admin-endpoints), proxy requirements in [Transport §7.1](transport.md#71-reverse-tunnels-through-a-proxy) and the threat model in [Security §9](security.md#9-reverse-mode).
+
+**How a tunnel works.** The database-side node dials `GET /v1/reverse` on each endpoint (WebSocket upgrade, subprotocol `dbbridge.reverse.v1.5`) and keeps `reverse.tunnels_per_endpoint` tunnels. Streams are multiplexed with smux protocol v2; smux keepalive follows `transport.heartbeat` and `transport.failure_detect_timeout`, and each tunnel's receive buffer (codec_buffer_limit/16, between 1 MiB and 2×`buffer_per_direction`) is charged to the codec budget on both nodes. Each stream the public side opens is one connection to the database side's egress HTTP server, so sessions, probes, cooldown and recovery work exactly as for a forward peer (the reverse peer has one virtual endpoint `tunnel`). The database side opens no listening socket unless `http.enabled` is also set.
+
+**Identity checks (both directions).** The handshake carries the bearer token, the database side's `node.id` and instance ID, the `node.id` it expects (`reverse.peer_node_id`), a tunnel ID and the endpoint priority. The public side accepts it only when the token is the current token of a reverse peer (compared in constant time), the database side's node ID equals that peer's `expected_node_id`, and the expected node ID is its own; it answers with its own node and instance IDs, which the database side verifies after TLS. Refusals: `401 DBB_UNAUTHORIZED`, `403 DBB_NODE_MISMATCH`, `409 DBB_PROTOCOL_MISMATCH` (other reverse protocol version), `409 DBB_TUNNEL_CONFLICT` (tunnel ID already registered, or live tunnels of another instance of the same peer still registered: a restarted database side is accepted once the old tunnels are gone, at the latest after `failure_detect_timeout`). At most 64 tunnels per reverse peer. When a credentials reload rotates or revokes the peer's token, tunnels set up with the old token are closed; the database side re-reads `reverse.token_file` on every dial.
+
+**SSE and long polling.** When WebSocket cannot get through, the tunnel's byte stream is carried by plain HTTPS requests, all sent by the database side: it opens the tunnel with `POST /v1/reverse/{tunnel}/open` (same identity checks as the WebSocket handshake), sends its bytes with `POST /v1/reverse/{tunnel}/up` (offset, SHA-256 of the body, at most 128 KiB, retried and de-duplicated by offset) and receives the public side's bytes from an SSE stream `GET /v1/reverse/{tunnel}/events` (`http-sse`) or by long polling `GET /v1/reverse/{tunnel}/poll` (`long-poll`: answers as soon as there are bytes, at most 256 KiB, or with 204 after about 25 s). Every request acknowledges the bytes received, and each side keeps unacknowledged bytes (up to 512 KiB per direction, charged to the codec budget with the smux buffer) and sends them again after a lost request, so a dropped HTTP connection loses and duplicates nothing and does not end the tunnel. Requests are bound to the token and instance that opened the tunnel; a request for a tunnel the public side no longer holds is answered `404 DBB_TUNNEL_NOT_FOUND` and the database side opens a new one. Long polling adds a round trip per burst from the public side, so it is only the last fallback.
+
+**`auto` fallback.** `auto` tries WebSocket, then SSE, then long polling, per endpoint. It falls back on an answer that did not come from DBBridge (a redirect, 404, 426, a gateway 5xx, or a 200 instead of the upgrade) and on `DBB_TRANSPORT_UNSUPPORTED`, but never on `401`, on a DBBridge refusal such as a verified `403`, or on a network error. SSE is considered buffered by an intermediary, and auto moves to long polling, when the stream's first (`ready`) event does not arrive within `transport.ws.handshake_timeout`. An endpoint stays on its fallback transport for 10 minutes, then its next tunnel tries WebSocket again. An explicit `ws`, `http-sse` or `long-poll` never falls back.
+
+**Endpoints and reconnects.** Slots of an endpoint dial only while no endpoint with a better (lower) `priority` has a live tunnel; tunnels already up stay up when a better endpoint returns (like `failback: new_sessions`). The public side opens streams on the best-priority tunnel with the fewest open streams. A lost tunnel is a carrier loss: with recovery enabled its sessions resume within `recovery.grace` over the remaining or reconnected tunnels.
+
+**Public side (ingress): `peers[].mode: reverse`**
+
+| Key | Type | Default | Constraints |
+|---|---|---|---|
+| `mode` | string | `forward` | `forward` or `reverse`. Anything else is `DBB-CFG-007`. |
+
+A reverse peer cannot have `endpoints` (`DBB-CFG-007`) and needs `http.enabled: true` on this node, because its tunnel arrives at `/v1/reverse` on `http.listen` (`DBB-CFG-007`). `expected_node_id`, `credential_ref`, the token, `failover`, `recovery` and `transport` keep their meaning; the token also authenticates the incoming tunnel. `tls` and `allow_insecure_http` have no effect on a reverse peer and produce a warning. Forward peers still require `endpoints`.
+
+**Database side (egress): the `reverse` section**
+
+| Key | Type | Default | Constraints |
+|---|---|---|---|
+| `reverse.enabled` | bool | `false` | Dial tunnels out and serve the egress role (`targets`, inbound identities) over them. Does not require `http.enabled`; HTTP inside the tunnel counts as loopback and needs no `http.tls`. Other keys set while disabled produce a warning. |
+| `reverse.peer_node_id` | string | — | Required when enabled; must differ from `node.id`. The public side's `node.id` is verified in the handshake. |
+| `reverse.token_file` / `reverse.token_env` | path / variable | — | Exactly one when enabled. Authenticates the tunnel. Read failures are `DBB-CFG-003`. |
+| `reverse.transport` | string | `auto` | `auto` (WebSocket → SSE → long polling, see `auto` fallback), `ws`, `http-sse` or `long-poll`. |
+| `reverse.tunnels_per_endpoint` | int | `2` | 1–16. Tunnels kept per endpoint. |
+| `reverse.endpoints` | list | — | 1 to `limits.max_endpoints_per_peer` entries when enabled, with the rules of `peers[].endpoints` (`id`, `url`, `priority`). Plaintext `http://` to a non-loopback host needs `reverse.allow_insecure_http: true`. |
+| `reverse.reconnect.min_backoff` | duration | `500ms` | > 0. The first reconnect after a loss does not wait; later ones back off exponentially with jitter. |
+| `reverse.reconnect.max_backoff` | duration | `30s` (at least `min_backoff`) | ≥ `min_backoff`, ≤ `10m`. |
+| `reverse.tls.verify` / `allow_insecure_skip_verify` / `ca_file` | — | verify | Same rules as `peers[].tls`; the public side's certificate is verified strictly. An unloadable CA file is `DBB-CFG-004`. |
+| `reverse.allow_insecure_http` | bool | `false` | Allows plaintext `http://` tunnel endpoints on non-loopback hosts. |
+
+Other errors in the `reverse` section are `DBB-CFG-008`. With recovery enabled, a warning is printed when `transport.recovery.grace` does not exceed `peer_dial_timeout + reverse.reconnect.min_backoff + recovery.barrier_timeout` (the time for one more attempt after a failed first reconnect).
 
 ## 8. `listeners`
 
@@ -224,7 +267,7 @@ How each value is used and when to change it is in [Transport](transport.md).
 | Key | Type | Default | Constraints |
 |---|---|---|---|
 | `protocol` | string | `auto` | `auto`, `ws`, `http-sse`. |
-| `protocol_version` | string | `"1.4"` | Must be the string `"1.4"`. |
+| `protocol_version` | string | `"1.5"` | Must be the string `"1.5"`. |
 | `ws.handshake_timeout` | duration | `5s` | > 0. Bounds the WebSocket upgrade (TCP, TLS, `101`). |
 | `ws.write_idle_timeout` | duration | `60s` | > 0. |
 | `frame_size` | size | `min(32KiB, max_frame_size)` | > 0, ≤ `max_frame_size`. |
@@ -303,6 +346,8 @@ When a constraint fails against a default, the message says so, for example `max
 | sum of enabled inbound `max_sessions` ≤ `limits.max_sessions` | more than one enabled identity |
 | every `allowed_targets` entry exists in `targets` | always |
 | every `peers[].credential_ref` exists in `outbound_peers` | with `credentials_file` |
+| a reverse peer has no `endpoints` and this node has `http.enabled: true`; a forward peer has `endpoints` | every peer |
+| `reverse.peer_node_id`, a token and at least one `reverse.endpoints` entry; `0 < min_backoff ≤ max_backoff ≤ 10m` | `reverse.enabled: true` |
 
 ## 14. Session capacity and the metadata budget
 
@@ -331,6 +376,7 @@ The same budget also holds the create records and tombstones that make session c
 - non-canonical IDs;
 - inbound quota warnings (§6.2);
 - `http.enabled: false` with targets, inbound credentials or `http.tls`; a node with nothing to do;
+- reverse mode: `tls`/`allow_insecure_http` on a reverse peer; other `reverse` keys with `reverse.enabled: false`; `reverse.enabled` without targets; a `recovery.grace` too short for a tunnel reconnect (§7.1);
 - recovery that cannot succeed: `transport.recovery.grace` does not exceed `failover.cooldown + recovery.barrier_timeout` for a peer with a forced protocol (`ws` or `http-sse`) and a single usable endpoint. Raise `grace`, lower `cooldown`, use `auto` or add an endpoint.
 
 ## 16. What is re-read while running

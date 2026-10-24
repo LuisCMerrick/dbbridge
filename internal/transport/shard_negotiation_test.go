@@ -39,7 +39,7 @@ func TestCreateResponseFrameMustFitWindow(t *testing.T) {
 	c := NewTripleTransportClientForURL("http://127.0.0.1:1", "token", &config.TransportConfig{}, "ingress", true)
 	defer c.Close()
 	requested := protocol.SessionLimits{MaxFrameSize: 4096, UpMaxInflightFrames: 8, UpWindowBytes: 8192, DownBufferBytes: 16384}
-	base := protocol.CreateSessionResponse{ProtocolVersion: "1.4", InstanceID: "owner", SessionID: "0123456789abcdef0123456789abcdef", SessionToken: "secret", Epoch: "1", Transport: protocol.TransportMode{Mode: "ws"}, UnattachedTimeoutMs: 1000,
+	base := protocol.CreateSessionResponse{ProtocolVersion: "1.5", InstanceID: "owner", SessionID: "0123456789abcdef0123456789abcdef", SessionToken: "secret", Epoch: "1", Transport: protocol.TransportMode{Mode: "ws"}, UnattachedTimeoutMs: 1000,
 		Limits: protocol.SessionLimits{MaxFrameSize: 4096, UpMaxInflightFrames: 8, UpWindowBytes: 4096, DownBufferBytes: 4096, UpReceiptLimit: 64, DownMaxFrames: 512}}
 	ok := base
 	if err := c.validateCreateResponse(&ok, requested, protocol.RecoveryNegotiation{}, "owner", "ws"); err != nil {

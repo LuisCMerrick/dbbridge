@@ -41,7 +41,7 @@ func TestControlUnionStrictness(t *testing.T) {
 // sender builds (even with stray fields set) decodes strictly on the peer.
 func TestControlMarshalRoundTrip(t *testing.T) {
 	rid := "r"
-	full := WSTextControlMessage{SessionID: "s", InstanceID: "i", Epoch: "1", StreamID: "x", ProtocolVersion: "1.4", AckUpOffset: "3", UpFinApplied: true, Nonce: "n", FinalOffset: "4", Code: "DBB_X", Retryable: true, SessionClosed: true, Transport: "ws", ResumeRequestID: &rid}
+	full := WSTextControlMessage{SessionID: "s", InstanceID: "i", Epoch: "1", StreamID: "x", ProtocolVersion: "1.5", AckUpOffset: "3", UpFinApplied: true, Nonce: "n", FinalOffset: "4", Code: "DBB_X", Retryable: true, SessionClosed: true, Transport: "ws", ResumeRequestID: &rid}
 	for _, kind := range []string{"ready", "ack_up", "ping", "fin", "error"} {
 		m := full
 		m.Type = kind

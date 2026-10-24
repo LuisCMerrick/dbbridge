@@ -7,8 +7,8 @@ import (
 
 func TestBoundaryExactSchema(t *testing.T) {
 	for _, body := range []string{
-		`{"protocol_version":"bad","PROTOCOL_VERSION":"1.4","expected_node_id":"B","nonce":"n"}`,
-		`{"protocol_version":"1.4","expected_node_id":"B","nonce":"n","Nonce":"overridden"}`,
+		`{"protocol_version":"bad","PROTOCOL_VERSION":"1.5","expected_node_id":"B","nonce":"n"}`,
+		`{"protocol_version":"1.5","expected_node_id":"B","nonce":"n","Nonce":"overridden"}`,
 	} {
 		var q ProbeRequest
 		err := DecodeJSON(strings.NewReader(body), 16384, &q)

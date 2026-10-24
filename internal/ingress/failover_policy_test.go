@@ -44,7 +44,7 @@ func testChooser(t *testing.T, urls ...string) (*IngressManager, config.PeerConf
 func testProbeResponse(w http.ResponseWriter, r *http.Request, accept bool) {
 	var q protocol.ProbeRequest
 	_ = json.NewDecoder(r.Body).Decode(&q)
-	_ = json.NewEncoder(w).Encode(protocol.ProbeResponse{ProtocolVersion: "1.4", NodeID: "B", InstanceID: "bi", Nonce: q.Nonce, AcceptingNewSessions: accept, RecoveryAvailable: true, Transports: []string{"ws", "http-sse"}})
+	_ = json.NewEncoder(w).Encode(protocol.ProbeResponse{ProtocolVersion: "1.5", NodeID: "B", InstanceID: "bi", Nonce: q.Nonce, AcceptingNewSessions: accept, RecoveryAvailable: true, Transports: []string{"ws", "http-sse"}})
 }
 func TestSafeFallback(t *testing.T) {
 	for _, mode := range []string{"reset", "ordinary_200", "trusted_unsupported", "raw_403"} {
@@ -91,7 +91,7 @@ func TestBadCandidateDoesNotHideBackup(t *testing.T) {
 			return
 		}
 		defer c.Close()
-		c.WriteJSON(protocol.WSHelloMessage{Type: "hello", ProtocolVersion: "1.4", NodeID: "WRONG", InstanceID: "bi", Nonce: r.Header.Get(protocol.HeaderWSNonce), Transport: "ws"})
+		c.WriteJSON(protocol.WSHelloMessage{Type: "hello", ProtocolVersion: "1.5", NodeID: "WRONG", InstanceID: "bi", Nonce: r.Header.Get(protocol.HeaderWSNonce), Transport: "ws"})
 	}))
 	defer primary.Close()
 	var backupCalls atomic.Int64
@@ -99,7 +99,7 @@ func TestBadCandidateDoesNotHideBackup(t *testing.T) {
 		backupCalls.Add(1)
 		var q protocol.ProbeRequest
 		json.NewDecoder(r.Body).Decode(&q)
-		json.NewEncoder(w).Encode(protocol.ProbeResponse{ProtocolVersion: "1.4", NodeID: "B", InstanceID: "bi", Nonce: q.Nonce, AcceptingNewSessions: true, RecoveryAvailable: true, Transports: []string{"http-sse"}})
+		json.NewEncoder(w).Encode(protocol.ProbeResponse{ProtocolVersion: "1.5", NodeID: "B", InstanceID: "bi", Nonce: q.Nonce, AcceptingNewSessions: true, RecoveryAvailable: true, Transports: []string{"http-sse"}})
 	}))
 	defer backup.Close()
 	control, cp := testChooser(t, backup.URL)
@@ -208,7 +208,7 @@ func TestCreateDeadlineClosesSilentWSReady(t *testing.T) {
 			var q protocol.CreateSessionRequest
 			json.NewDecoder(r.Body).Decode(&q)
 			w.WriteHeader(201)
-			json.NewEncoder(w).Encode(protocol.CreateSessionResponse{ProtocolVersion: "1.4", NodeID: "B", InstanceID: "bi", SessionID: "silent-ready-session", SessionToken: "session-token", Epoch: "1", Transport: q.Transport, Recovery: q.Recovery, Limits: q.Limits, UnattachedTimeoutMs: 30000})
+			json.NewEncoder(w).Encode(protocol.CreateSessionResponse{ProtocolVersion: "1.5", NodeID: "B", InstanceID: "bi", SessionID: "silent-ready-session", SessionToken: "session-token", Epoch: "1", Transport: q.Transport, Recovery: q.Recovery, Limits: q.Limits, UnattachedTimeoutMs: 30000})
 		case "/v1/transport/ws":
 			up := websocket.Upgrader{Subprotocols: []string{protocol.SecWebSocketProtocol}}
 			c, e := up.Upgrade(w, r, nil)
@@ -217,7 +217,7 @@ func TestCreateDeadlineClosesSilentWSReady(t *testing.T) {
 			}
 			defer c.Close()
 			if r.Header.Get(protocol.HeaderWSPurpose) == "check" {
-				c.WriteJSON(protocol.WSHelloMessage{Type: "hello", ProtocolVersion: "1.4", NodeID: "B", InstanceID: "bi", Nonce: r.Header.Get(protocol.HeaderWSNonce), Transport: "ws"})
+				c.WriteJSON(protocol.WSHelloMessage{Type: "hello", ProtocolVersion: "1.5", NodeID: "B", InstanceID: "bi", Nonce: r.Header.Get(protocol.HeaderWSNonce), Transport: "ws"})
 			}
 			c.ReadMessage()
 		}
