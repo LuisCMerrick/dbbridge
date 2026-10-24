@@ -4,7 +4,7 @@
 
 构建的版本号在构建时确定（`dbbridge version`）。
 
-## [Unreleased] - 协议 1.5，反向模式
+## [1.5.26.10.24] - 2026-10-24
 
 协议 1.5。**与 1.4 不兼容：**两端必须同时升级；1.4 节点会收到 `DBB_PROTOCOL_MISMATCH`，WebSocket 子协议改为 `dbbridge.v1.5`。
 

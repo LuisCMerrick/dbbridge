@@ -4,7 +4,7 @@
 
 The version of a build is set when it is built (`dbbridge version`).
 
-## [Unreleased] - protocol 1.5, reverse mode
+## [1.5.26.10.24] - 2026-10-24
 
 Protocol 1.5. **Incompatible with 1.4:** both nodes must be upgraded together; a 1.4 node is answered with `DBB_PROTOCOL_MISMATCH` and the WebSocket subprotocol is now `dbbridge.v1.5`.
 
