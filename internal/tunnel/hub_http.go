@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"dbbridge/internal/config"
 	"dbbridge/internal/protocol"
 
 	"github.com/xtaci/smux"
@@ -25,7 +26,7 @@ import (
 // maxUpBody bytes, one poll response at most maxPollBody and one SSE event
 // at most sseChunk bytes before base64.
 const (
-	pipeCapacity = 512 << 10
+	pipeCapacity = config.TunnelCarrierBuffers / 2
 	maxUpBody    = 128 << 10
 	maxPollBody  = 256 << 10
 	sseChunk     = 32 << 10
@@ -42,8 +43,9 @@ const (
 )
 
 // httpTunnelBudget is what an HTTP-carried tunnel charges to the codec
-// budget on each side: the smux receive buffer plus both pipe buffers.
-func httpTunnelBudget(rb int64) int64 { return rb + 2*pipeCapacity }
+// budget on each side for its lifetime: both pipe buffers. Its streams'
+// receive windows are charged per open stream, as on a WebSocket tunnel.
+func httpTunnelBudget() int64 { return 2 * pipeCapacity }
 
 // serveHTTP handles /v1/reverse/{tunnel}[/action] for tunnels carried over
 // plain HTTP requests.
@@ -77,6 +79,17 @@ func (h *Hub) serveHTTP(w http.ResponseWriter, r *http.Request, authenticated fu
 		h.reject(w, r, nil, refuse(405, protocol.ErrBadFrame, "method", false))
 		return
 	}
+	// Uploads and closes are admitted like any other request. A tunnel has
+	// one reader (SSE or poll) at a time, a newer one ending the older (see
+	// takeReader), so readers are bounded by the tunnels and take no slot.
+	if action == "" || action == protocol.ReverseUpSuffix {
+		done, herr := h.admitRequest(r, t.Peer, action == "")
+		if herr != nil {
+			h.reject(w, r, nil, herr)
+			return
+		}
+		defer done()
+	}
 	if action == "" {
 		slog.Info("reverse tunnel closed by its database side", "peer", t.Peer, "tunnel", t.ID)
 		t.close()
@@ -109,15 +122,23 @@ func (h *Hub) serveHTTP(w http.ResponseWriter, r *http.Request, authenticated fu
 // must be the one the tunnel was opened with and the instance the one that
 // opened it.
 func (h *Hub) lookup(r *http.Request, id string, authenticated func()) (*Tunnel, *handshakeError) {
-	peer, digest, herr := h.authenticate(r)
+	_, digest, herr := h.authenticate(r)
 	if herr != nil {
 		return nil, herr
 	}
 	if authenticated != nil {
 		authenticated()
 	}
+	// The tunnel is looked up by ID across every reverse peer: peers that
+	// share a token cannot be told apart by it, and the tunnel's own digest
+	// below binds the request to the token the tunnel was opened with.
 	h.mu.Lock()
-	t := peer.tunnels[id]
+	var t *Tunnel
+	for _, p := range h.peers {
+		if t = p.tunnels[id]; t != nil {
+			break
+		}
+	}
 	h.mu.Unlock()
 	if t == nil || t.pipe == nil || t.sess.IsClosed() {
 		return nil, refuse(404, protocol.ErrTunnelNotFound, "tunnel not found", false)
@@ -159,19 +180,21 @@ func (h *Hub) openHTTP(w http.ResponseWriter, r *http.Request, id string, authen
 		herr = refuse(400, protocol.ErrBadFrame, "tunnel transport", false)
 	}
 	if herr == nil {
+		var done func()
+		if done, herr = h.admitRequest(r, q.peer.id, true); herr == nil {
+			defer done()
+		}
+	}
+	if herr == nil {
 		h.mu.Lock()
 		herr = h.checkConflict(q)
 		h.mu.Unlock()
 	}
 	var release func()
 	if herr == nil {
-		need := httpTunnelBudget(ReceiveBuffer(h.tcfg))
-		if h.codec != nil {
-			if !h.codec.Try(need) {
-				herr = refuse(503, protocol.ErrBufferExhausted, "codec budget", true)
-			} else {
-				release = func() { h.codec.Put(need) }
-			}
+		var ok bool
+		if release, ok = tryCodec(h.codec, httpTunnelBudget(), h.keep); !ok {
+			herr = refuse(503, protocol.ErrBufferExhausted, "codec budget", true)
 		}
 	}
 	if herr != nil {
@@ -218,6 +241,17 @@ func (h *Hub) upHTTP(w http.ResponseWriter, r *http.Request, t *Tunnel) {
 		h.reject(w, r, nil, refuse(413, protocol.ErrFrameTooLarge, "body", false))
 		return
 	}
+	// The body is held in memory until the pipe takes it: charge it.
+	size := int64(maxUpBody + 1)
+	if r.ContentLength >= 0 {
+		size = r.ContentLength
+	}
+	free, ok := tryCodec(h.codec, size, h.keep)
+	if !ok {
+		h.reject(w, r, nil, refuse(503, protocol.ErrBufferExhausted, "codec budget", true))
+		return
+	}
+	defer free()
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxUpBody+1))
 	if err != nil {
 		return

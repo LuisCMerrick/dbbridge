@@ -21,20 +21,21 @@ import (
 )
 
 type Server struct {
-	ctx          context.Context
-	cancel       context.CancelFunc
-	cfg          *config.Config
-	auth         *auth.Authenticator
-	registry     *session.Registry
-	httpServer   *http.Server
-	listener     net.Listener
-	mu           sync.Mutex
-	downNotifier sync.Map
-	connections  sync.Map
-	wg           sync.WaitGroup
-	stopped      bool
-	started      bool
-	onServeError func(error)
+	reverseShares reverseShares
+	ctx           context.Context
+	cancel        context.CancelFunc
+	cfg           *config.Config
+	auth          *auth.Authenticator
+	registry      *session.Registry
+	httpServer    *http.Server
+	listener      net.Listener
+	mu            sync.Mutex
+	downNotifier  sync.Map
+	connections   sync.Map
+	wg            sync.WaitGroup
+	stopped       bool
+	started       bool
+	onServeError  func(error)
 	// stopReload unregisters the credentials reload sweep on Close.
 	stopReload func()
 	// idem bounds the create records each peer keeps in the shared
@@ -72,6 +73,9 @@ func (s *Server) SetReverseHub(h *tunnel.Hub) {
 	s.mu.Lock()
 	s.hub = h
 	s.mu.Unlock()
+	if h != nil {
+		h.SetAdmission(s.admitReverse)
+	}
 }
 
 // SetTunnelListener makes Start also serve the streams delivered to ln, the

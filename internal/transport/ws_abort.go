@@ -16,6 +16,11 @@ import (
 // handshake timeout. Every socket the dialer opens is closed when ctx ends
 // before the handshake returns.
 func (c *TripleTransportClient) dialWSAbortable(ctx context.Context, wsURL string, header http.Header) (*websocket.Conn, *http.Response, error) {
+	header = header.Clone()
+	if header == nil {
+		header = http.Header{}
+	}
+	SetUserAgent(header, c.tCfg)
 	dialer := c.newWSDialer()
 	var mu sync.Mutex
 	var stops []func() bool

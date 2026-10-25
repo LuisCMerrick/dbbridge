@@ -192,7 +192,7 @@ outbound_peers:
 
 隧道可以走 WebSocket、SSE 或长轮询，`auto` 按此顺序回退。`dbbridge gen-config --reverse` 可生成匹配的配置对（[运维 §1](operations.zh-CN.md#gen-config)）；隧道指标与 `/readyz` 规则见 [运维 §4–5](operations.zh-CN.md#4-admin-端点)，代理要求见 [传输 §7.1](transport.zh-CN.md#71-经代理的反向隧道)，威胁模型见 [安全 §9](security.zh-CN.md#9-反向模式)。
 
-**隧道工作方式。** 数据库侧节点对每个 endpoint 发起 `GET /v1/reverse`（WebSocket 升级，子协议 `dbbridge.reverse.v1.5`），每个 endpoint 保持 `reverse.tunnels_per_endpoint` 条隧道。隧道内用 smux v2 多路复用；smux 保活跟随 `transport.heartbeat` 与 `transport.failure_detect_timeout`；每条隧道的接收缓冲（codec_buffer_limit/16，介于 1 MiB 与 2×`buffer_per_direction` 之间）在两端都计入编解码预算。公网侧打开的每个流就是到数据库侧 Egress HTTP 服务的一条连接，因此会话、探测、冷却和恢复与正向 peer 完全一致（反向 peer 只有一个虚拟 endpoint `tunnel`）。除非同时开启 `http.enabled`，数据库侧不监听任何端口。
+**隧道工作方式。** 数据库侧节点对每个 endpoint 发起 `GET /v1/reverse`（WebSocket 升级，子协议 `dbbridge.reverse.v1.5`），每个 endpoint 保持 `reverse.tunnels_per_endpoint` 条隧道。隧道内用 smux v2 多路复用；smux 保活跟随 `transport.heartbeat` 与 `transport.failure_detect_timeout`；每个流有自己的接收窗口（codec_buffer_limit/128，介于 256 KiB 与 min(`buffer_per_direction`, 1 MiB) 之间，默认 256 KiB），流打开期间计入读取方的编解码预算。空闲的 WebSocket 隧道不占编解码内存；SSE 或长轮询隧道保留 1 MiB 载体缓冲。隧道占用不会挤占本地 ingress 预留，每条隧道最多 1024 个流。数据库侧的 `codec_buffer_limit` 至少要容纳数据面最低需求加两个流窗口（`reverse.transport` 不是 `ws` 时再加 1 MiB）；`check-config` 会给出最低值。公网侧打开的每个流就是到数据库侧 Egress HTTP 服务的一条连接，因此会话、探测、冷却和恢复与正向 peer 完全一致（反向 peer 只有一个虚拟 endpoint `tunnel`）。除非同时开启 `http.enabled`，数据库侧不监听任何端口。
 
 **双向身份校验。** 握手携带 Bearer 令牌、数据库侧的 `node.id` 与实例 ID、它期望的 `node.id`（`reverse.peer_node_id`）、隧道 ID 和 endpoint 优先级。公网侧仅在以下条件同时满足时接受：令牌是某个反向 peer 的当前令牌（常量时间比较），数据库侧节点 ID 等于该 peer 的 `expected_node_id`，期望节点 ID 等于自身；随后在响应中返回自己的节点 ID 与实例 ID，由数据库侧在 TLS 之后再次核对。拒绝时返回：`401 DBB_UNAUTHORIZED`、`403 DBB_NODE_MISMATCH`、`409 DBB_PROTOCOL_MISMATCH`（反向协议版本不同）、`409 DBB_TUNNEL_CONFLICT`（隧道 ID 已注册，或同一 peer 的另一个实例仍有存活隧道：重启后的数据库侧在旧隧道消失后即可接入，最迟在 `failure_detect_timeout` 之后）。每个反向 peer 最多 64 条隧道。凭据重载轮换或吊销该 peer 的令牌时，用旧令牌建立的隧道会被关闭；数据库侧每次拨号都会重新读取 `reverse.token_file`。
 
@@ -300,8 +300,9 @@ DNS 解析出错或超时与 TCP 连接被拒一样，以 `502 DBB_DIAL_FAILED` 
 | `socket_write_timeout` | 时长 | `60s` | > 0。 |
 | `sse_write_idle_timeout` | 时长 | `60s` | > 0。 |
 | `backpressure_timeout` | 时长 | `120s` | > 0。 |
-| `shutdown_timeout` | 时长 | `30s` | > 0。 |
+| `shutdown_timeout` | 时长 | `30s` | > 0。停止（第一次 Ctrl-C、SIGTERM、服务停止）时等待已打开会话自行结束的最长时间，超时后关闭它们；数据库客户端通常保持连接池中的连接，因此停止往往会等满这段时间。等待期间每 5 秒记录一次进度；再按一次 Ctrl-C（非 Windows 上也可再发 SIGTERM）立即强制退出，退出码 130。 |
 | `use_environment_proxy` | bool | `false` | 对端连接使用 `HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY`（含小写形式）。每个进程只读取一次。 |
+| `user_agent` | 字符串 | `DBBridge/<协议版本>` | 本节点发往对端的每个请求和 WebSocket 握手（含反向隧道）使用的 `User-Agent`，替代 Go 默认的 `Go-http-client/1.1`/`2.0`。仅可打印 ASCII，最长 256 字节，首尾不能有空格。 |
 | `sql_replay` | bool | `false` | 必须为 `false`。 |
 
 ## 12. 派生默认值

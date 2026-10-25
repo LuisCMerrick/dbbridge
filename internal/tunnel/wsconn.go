@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"dbbridge/internal/transport"
+
 	"github.com/gorilla/websocket"
 )
 
@@ -81,12 +83,15 @@ func (w *wsConn) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// Close sends a best-effort close frame and closes the socket.
+// Close sends a best-effort close frame and closes the socket without
+// waiting on the peer: for wss, closing the TLS layer first would send
+// close_notify under its own 5 s deadline, which blocks reconnects and
+// teardown when the carrier is blackholed (the raw socket is closed first).
 func (w *wsConn) Close() error {
 	var err error
 	w.once.Do(func() {
-		_ = w.c.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""), time.Now().Add(time.Second))
-		err = w.c.Close()
+		_ = w.c.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""), time.Now().Add(100*time.Millisecond))
+		err = transport.CloseWSHard(w.c)
 	})
 	return err
 }

@@ -13,8 +13,17 @@ import (
 func (c *Config) validatePeers(peerMap map[string]bool) error {
 	// Validate peers and resolve token
 	var err error
+	reverseNodes := map[string]string{}
 	for i := range c.Peers {
 		p := &c.Peers[i]
+		if p.Mode == PeerModeReverse && p.ExpectedNodeID != "" {
+			// The public side tells reverse peers that share a token
+			// apart by the node ID their tunnels present.
+			if other, dup := reverseNodes[p.ExpectedNodeID]; dup {
+				return fmt.Errorf("peers[%s] and peers[%s]: reverse peers must have distinct expected_node_id (%q)", other, p.ID, p.ExpectedNodeID)
+			}
+			reverseNodes[p.ExpectedNodeID] = p.ID
+		}
 		if p.ID == "" {
 			return fmt.Errorf("peers[%d].id cannot be empty", i)
 		}

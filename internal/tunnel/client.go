@@ -41,6 +41,10 @@ type Client struct {
 	cfg   *config.Config
 	ln    *Listener
 	codec *resource.Budget
+	// keep is the codec this side's tunnel charges leave free (the local
+	// ingress reserve of a bidirectional node).
+	keep           func() int64
+	streamsRefused atomic.Int64
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -93,6 +97,7 @@ func NewClient(cfg *config.Config, ln *Listener) *Client {
 	c := &Client{cfg: cfg, ln: ln, live: map[string]*clientTunnel{}, wake: make(chan struct{}), modes: map[string]*endpointMode{}}
 	if cfg.Resources != nil {
 		c.codec = cfg.Resources.Codec
+		c.keep = cfg.Resources.IngressCodecReserve
 	}
 	c.ctx, c.cancel = context.WithCancel(context.Background())
 	c.tlsConfig = clientTLS(&cfg.Reverse.TLS)
@@ -383,18 +388,14 @@ func (c *Client) dial(ep config.EndpointConfig) (*clientTunnel, error) {
 // multiplexer.
 func (c *Client) dialMode(ep config.EndpointConfig, mode string) (*clientTunnel, error) {
 	id := newTunnelID()
-	need := ReceiveBuffer(&c.cfg.Transport)
+	// A WebSocket tunnel holds no codec memory while idle; an HTTP-carried
+	// one keeps its two pipe buffers. Stream windows are charged per
+	// accepted stream (serve).
+	release := func() {}
 	if mode != modeWS {
-		need = httpTunnelBudget(need)
-	}
-	if c.codec != nil {
-		if !c.codec.Try(need) {
-			return nil, errors.New("codec budget exhausted for a tunnel receive buffer")
-		}
-	}
-	release := func() {
-		if c.codec != nil {
-			c.codec.Put(need)
+		var ok bool
+		if release, ok = tryCodec(c.codec, httpTunnelBudget(), c.keep); !ok {
+			return nil, errors.New("codec budget exhausted for a tunnel carrier buffer")
 		}
 	}
 	var conn net.Conn
@@ -466,6 +467,7 @@ func (c *Client) dialWS(ep config.EndpointConfig, id string) (*websocket.Conn, e
 		d.Proxy = http.ProxyFromEnvironment
 	}
 	h := http.Header{}
+	transport.SetUserAgent(h, &c.cfg.Transport)
 	h.Set(protocol.HeaderPeerAuth, "Bearer "+token)
 	h.Set(protocol.HeaderNodeID, c.cfg.Node.ID)
 	h.Set(protocol.HeaderInstanceID, c.cfg.Node.InstanceID)
@@ -515,7 +517,22 @@ func (c *Client) serve(t *clientTunnel) {
 		if err != nil {
 			return
 		}
-		if err := c.ln.Deliver(c.ctx, ownStream(st)); err != nil {
+		// The public side opens a stream per connection it needs; this
+		// side's memory for it is the stream's receive window. Without
+		// room (or past the per-tunnel stream bound) the stream is closed
+		// and the public side's request fails as a connection error.
+		release, ok := tryCodec(c.codec, ReceiveBuffer(&c.cfg.Transport), c.keep)
+		if !ok || t.sess.NumStreams() > config.MaxStreamsPerTunnel {
+			if ok {
+				release()
+			}
+			c.streamsRefused.Add(1)
+			slog.Debug("reverse tunnel stream refused: codec budget or stream bound", "tunnel", t.id, "streams", t.sess.NumStreams())
+			_ = st.Close()
+			continue
+		}
+		if err := c.ln.Deliver(c.ctx, resource.LeaseConn(ownStream(st), release)); err != nil {
+			release()
 			_ = st.Close()
 			if errors.Is(err, net.ErrClosed) || c.ctx.Err() != nil {
 				return

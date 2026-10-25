@@ -1,18 +1,25 @@
 package tunnel
 
 import (
+	"math"
+	"sync"
+
 	"dbbridge/internal/config"
+	"dbbridge/internal/resource"
 
 	"github.com/xtaci/smux"
 )
 
 // smuxConfig derives the stream multiplexer settings from the transport
-// configuration. Protocol v2 gives every stream its own window. Keepalive
-// follows heartbeat and failure_detect_timeout, so a blackholed tunnel is
-// dropped as fast as a blackholed carrier. The receive buffer (the bytes
-// that may wait unread across all streams of a tunnel) is charged to the
-// codec budget by the caller; a stream may hold at most half of it, and no
-// more than buffer_per_direction.
+// configuration. Protocol v2 gives every stream its own window
+// (TunnelStreamWindow), so a stream never holds more unread bytes than that.
+// The session-wide receive bucket is sized for MaxStreamsPerTunnel full
+// windows: smux stops reading the whole tunnel once the bucket is empty, and
+// a bucket smaller than the windows of the streams in use would let slow
+// data streams stall every other stream, control requests included. Memory
+// is charged per open stream instead (see chargeStream). Keepalive follows
+// heartbeat and failure_detect_timeout, so a blackholed tunnel is dropped as
+// fast as a blackholed carrier.
 func smuxConfig(t *config.TransportConfig) *smux.Config {
 	c := smux.DefaultConfig()
 	c.Version = 2
@@ -24,18 +31,29 @@ func smuxConfig(t *config.TransportConfig) *smux.Config {
 	} else {
 		c.KeepAliveTimeout = 3 * c.KeepAliveInterval
 	}
-	c.MaxReceiveBuffer = int(ReceiveBuffer(t))
-	c.MaxStreamBuffer = int(min(max(t.BufferPerDirection, 64<<10), int64(c.MaxReceiveBuffer/2)))
+	w := ReceiveBuffer(t)
+	c.MaxStreamBuffer = int(w)
+	c.MaxReceiveBuffer = int(min(w*config.MaxStreamsPerTunnel, math.MaxInt32))
 	return c
 }
 
-// ReceiveBuffer is the smux receive buffer of one tunnel: a sixteenth of
-// codec_buffer_limit, at least 1 MiB and at most twice buffer_per_direction
-// (2 MiB with the defaults).
-func ReceiveBuffer(t *config.TransportConfig) int64 {
-	b := t.CodecBufferLimit / 16
-	if hi := 2 * t.BufferPerDirection; hi > 0 {
-		b = min(b, hi)
+// ReceiveBuffer is the receive window of one tunnel stream, charged to the
+// codec budget for as long as the stream is open.
+func ReceiveBuffer(t *config.TransportConfig) int64 { return t.TunnelStreamWindow() }
+
+// tryCodec takes n bytes of codec, leaving keep() free when keep is set (a
+// role reserve the charge must not eat into). A nil budget always succeeds.
+func tryCodec(b *resource.Budget, n int64, keep func() int64) (release func(), ok bool) {
+	if b == nil {
+		return func() {}, true
 	}
-	return min(max(b, 1<<20), 1<<30)
+	k := int64(0)
+	if keep != nil {
+		k = keep()
+	}
+	if !b.TryKeep(n, k) {
+		return nil, false
+	}
+	var once sync.Once
+	return func() { once.Do(func() { b.Put(n) }) }, true
 }

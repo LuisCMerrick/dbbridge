@@ -3,7 +3,9 @@ package tunnel
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
+	"math"
 	"net"
 	"sync"
 	"time"
@@ -165,6 +167,13 @@ func (p *pipe) unacked() int {
 // original) are safe: each pass re-derives what is still missing from the
 // current receive offset.
 func (p *pipe) receive(ctx context.Context, off int64, data []byte) (int64, error) {
+	if off < 0 || off > math.MaxInt64-int64(len(data)) {
+		// Not a position on the byte stream: refuse it like a gap, never as
+		// an empty retransmission.
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		return p.inNext, fmt.Errorf("%w: offset %d out of range", errPipeGap, off)
+	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	end := off + int64(len(data))

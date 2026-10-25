@@ -12,6 +12,10 @@ func (c *Config) validateMetadataBudget() error {
 	if c.Transport.CodecBufferLimit < c.minCodecBudget() || c.Transport.MetadataLimit < 512*1024 {
 		return errors.New("codec/metadata budget too small")
 	}
+	if need := c.minReverseCodecBudget(); need > c.Transport.CodecBufferLimit {
+		return fmt.Errorf("transport.codec_buffer_limit (%d KiB) is too small for reverse tunnels: one session needs a control and a data stream window (2 x %d KiB) plus an HTTP carrier's buffers beside the %d KiB the data plane needs; raise it to at least %d KiB",
+			c.Transport.CodecBufferLimit>>10, c.Transport.TunnelStreamWindow()>>10, c.minCodecBudget()>>10, (need+1023)>>10)
+	}
 	// Subtract before multiplying so explicit huge sizes cannot wrap a signed
 	// metadata estimate. Include block headers as well as frames and receipts.
 	metaLimit := uint64(c.Transport.MetadataLimit - 2*min(c.Transport.MetadataLimit/4, 1<<20))
@@ -85,3 +89,22 @@ func (c *Config) minCodecBudget() int64 {
 
 // wsBinaryHeaderLen is the fixed DBBridge WebSocket binary frame header.
 const wsBinaryHeaderLen = 56
+
+// TunnelCarrierBuffers is what an HTTP-carried reverse tunnel keeps for its
+// lifetime on each side (internal/tunnel: two 512 KiB pipe buffers).
+const TunnelCarrierBuffers = 1 << 20
+
+// minReverseCodecBudget is the codec the database side of reverse mode needs
+// to carry its first session: the data-plane minimum, the receive windows of
+// one control and one data stream and, unless the tunnels are WebSocket only,
+// one HTTP carrier's buffers. Zero when reverse mode is off.
+func (c *Config) minReverseCodecBudget() int64 {
+	if !c.Reverse.Enabled {
+		return 0
+	}
+	need := c.minCodecBudget() + 2*c.Transport.TunnelStreamWindow()
+	if c.Reverse.Transport != "ws" {
+		need += TunnelCarrierBuffers
+	}
+	return need
+}

@@ -246,6 +246,21 @@ const ReverseEndpointID = "tunnel"
 // one reverse peer.
 const MaxTunnelsPerPeer = 64
 
+// MaxStreamsPerTunnel bounds the streams open at once on one reverse tunnel.
+const MaxStreamsPerTunnel = 1024
+
+// TunnelStreamWindow is the receive window of one stream of a reverse tunnel:
+// the bytes a peer may send on the stream before the reader consumes them.
+// Each open stream charges it to the codec budget of the side that reads it,
+// so the memory a tunnel can hold follows the streams in use rather than
+// being reserved for an idle tunnel. It is codec_buffer_limit/128, at least
+// 256 KiB (the multiplexer's initial window) and at most
+// min(buffer_per_direction, 1 MiB): 256 KiB with the defaults.
+func (t *TransportConfig) TunnelStreamWindow() int64 {
+	hi := max(min(t.BufferPerDirection, 1<<20), 256<<10)
+	return min(max(t.CodecBufferLimit/128, 256<<10), hi)
+}
+
 // HasReversePeers reports whether any peer uses reverse mode.
 func (c *Config) HasReversePeers() bool {
 	for i := range c.Peers {
@@ -372,7 +387,11 @@ type TransportConfig struct {
 	BackpressureTimeoutRaw     interface{}    `yaml:"backpressure_timeout"`
 	ShutdownTimeoutRaw         interface{}    `yaml:"shutdown_timeout"`
 	UseEnvironmentProxy        bool           `yaml:"use_environment_proxy"`
-	SQLReplay                  bool           `yaml:"sql_replay"`
+	// UserAgent is the User-Agent header of every request this node sends
+	// to a peer (HTTP requests and WebSocket handshakes). Empty means
+	// DefaultUserAgent ("DBBridge/<protocol version>").
+	UserAgent string `yaml:"user_agent"`
+	SQLReplay bool   `yaml:"sql_replay"`
 
 	// Parsed typed values
 	FrameSize               int           `yaml:"-"`

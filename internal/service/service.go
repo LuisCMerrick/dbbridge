@@ -200,6 +200,11 @@ func credentialEnvironment(c *config.Config) (map[string]string, error) {
 			names[p.TokenEnv] = true
 		}
 	}
+	// A disabled reverse section is never resolved, so its variable is
+	// not required.
+	if c.Reverse.Enabled && c.Reverse.TokenEnv != "" {
+		names[c.Reverse.TokenEnv] = true
+	}
 	inbound(c.Auth.InboundPeers)
 	if c.Auth.CredentialsFile != "" {
 		path := c.Auth.CredentialsFile
@@ -279,6 +284,10 @@ func serviceFiles(c *config.Config, configPath string) ([]string, error) {
 	for _, p := range c.Peers {
 		add(p.TokenFile, dir)
 		add(p.TLS.CAFile, dir)
+	}
+	if c.Reverse.Enabled {
+		add(c.Reverse.TokenFile, dir)
+		add(c.Reverse.TLS.CAFile, dir)
 	}
 	for _, p := range c.Auth.InboundPeers {
 		// A disabled identity's token sources are never read, so its

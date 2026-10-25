@@ -91,6 +91,11 @@ func (m *IngressManager) runProbe(key string, call *probeCall, peer string, c *t
 		}
 		return
 	}
+	if call.err != nil && localResourceError(call.err) {
+		// The request never left this node (a local connection or request
+		// budget wait ran out): local contention, not an endpoint failure.
+		return
+	}
 	m.observePhase(peer, c.URL(), "probe", start, call.err == nil)
 	// Every real probe is recorded exactly once, however many callers share it.
 	if id, ok := m.endpointID(peer, c.URL()); ok {

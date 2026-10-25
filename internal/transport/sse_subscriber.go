@@ -71,6 +71,7 @@ func (c *TripleTransportClient) SubscribeEvents(ctx context.Context, sid, token,
 	if e != nil {
 		return nil, e
 	}
+	SetUserAgent(r.Header, c.tCfg)
 	r.Header.Set("Accept", "text/event-stream")
 	if t := c.GetToken(); t != "" {
 		r.Header.Set("Authorization", "Bearer "+t)

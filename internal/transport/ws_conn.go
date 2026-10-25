@@ -75,7 +75,10 @@ func (w *WSSessionConn) Close() error {
 // write deadline, which blocks when the peer stopped reading and the send
 // buffer is full. Closing the raw TCP connection first makes that
 // write fail at once; the TLS layer is then closed for its bookkeeping.
-func closeWSHard(c *websocket.Conn) error {
+func closeWSHard(c *websocket.Conn) error { return CloseWSHard(c) }
+
+// CloseWSHard is closeWSHard for other packages (the reverse tunnel carrier).
+func CloseWSHard(c *websocket.Conn) error {
 	if c == nil {
 		return nil
 	}

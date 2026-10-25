@@ -139,6 +139,7 @@ func (h *httpCarrier) request(ctx context.Context, method, suffix string, body [
 	if err != nil {
 		return nil, err
 	}
+	transport.SetUserAgent(req.Header, &h.c.cfg.Transport)
 	req.Header.Set(protocol.HeaderPeerAuth, "Bearer "+h.token)
 	req.Header.Set(protocol.HeaderInstanceID, h.c.cfg.Node.InstanceID)
 	req.Header.Set("Cache-Control", "no-store")

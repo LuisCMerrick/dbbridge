@@ -39,6 +39,9 @@ type Hub struct {
 	codec              *resource.Budget
 	tokens             TokenSource
 	upgrader           websocket.Upgrader
+	// keep is the codec the tunnels' lifetime charges must leave free:
+	// the local ingress role's reserve.
+	keep func() int64
 
 	mu     sync.Mutex
 	peers  map[string]*hubPeer
@@ -53,6 +56,48 @@ type Hub struct {
 	rejectedBy map[string]int64
 	// pollWait replaces defaultPollWait in tests.
 	pollWait time.Duration
+	// admit, when set, admits every authenticated tunnel request against
+	// the HTTP server's request budgets (SetAdmission).
+	admit Admission
+}
+
+// Admission admits one authenticated tunnel request of a reverse peer: a
+// control request (a WebSocket handshake, an HTTP open or close) or a data
+// request (an upload), carrying meta bytes of request metadata. It returns
+// the release of everything it took, or false when a budget is exhausted.
+type Admission func(peer string, control bool, meta int64) (release func(), ok bool)
+
+// SetAdmission makes the hub admit its requests with a. Call before serving.
+func (h *Hub) SetAdmission(a Admission) {
+	h.mu.Lock()
+	h.admit = a
+	h.mu.Unlock()
+}
+
+// admitRequest runs the admission for r; a refusal is a retryable 429.
+func (h *Hub) admitRequest(r *http.Request, peer string, control bool) (func(), *handshakeError) {
+	h.mu.Lock()
+	a := h.admit
+	h.mu.Unlock()
+	if a == nil {
+		return func() {}, nil
+	}
+	release, ok := a(peer, control, requestMetadata(r))
+	if !ok {
+		return nil, refuse(429, protocol.ErrQuotaExceeded, "request concurrency", true)
+	}
+	return release, nil
+}
+
+// requestMetadata approximates the memory a request's line and headers hold.
+func requestMetadata(r *http.Request) int64 {
+	n := int64(len(r.Method) + len(r.URL.RequestURI()) + 16)
+	for k, vs := range r.Header {
+		for _, v := range vs {
+			n += int64(len(k) + len(v) + 4)
+		}
+	}
+	return n
 }
 
 type hubPeer struct {
@@ -110,6 +155,7 @@ func NewHub(cfg *config.Config, tokens TokenSource) *Hub {
 	h := &Hub{nodeID: cfg.Node.ID, instanceID: cfg.Node.InstanceID, tcfg: &cfg.Transport, tokens: tokens, peers: map[string]*hubPeer{}}
 	if cfg.Resources != nil {
 		h.codec = cfg.Resources.Codec
+		h.keep = cfg.Resources.IngressCodecReserve
 	}
 	if h.tokens == nil {
 		static := map[string]string{}
@@ -164,7 +210,13 @@ func (h *Hub) authenticate(r *http.Request) (*hubPeer, [32]byte, *handshakeError
 		return nil, [32]byte{}, refuse(401, protocol.ErrUnauthorized, "unauthorized", false)
 	}
 	presented := sha256.Sum256([]byte(p[1]))
-	var matched *hubPeer
+	// Several reverse peers may share a token (the configuration allows
+	// outbound credentials to be reused). The token alone then does not
+	// say which peer dialed, so among the peers it matches the one whose
+	// expected node ID the handshake names wins; with none, the first
+	// match (in ID order) is used and the node check refuses it.
+	node := r.Header.Get(protocol.HeaderNodeID)
+	var matched, byNode *hubPeer
 	for _, id := range h.peerIDs() {
 		tok := h.tokens(id)
 		if tok == "" {
@@ -172,8 +224,17 @@ func (h *Hub) authenticate(r *http.Request) (*hubPeer, [32]byte, *handshakeError
 		}
 		d := sha256.Sum256([]byte(tok))
 		if subtle.ConstantTimeCompare(d[:], presented[:]) == 1 {
-			matched = h.peers[id]
+			p := h.peers[id]
+			if matched == nil {
+				matched = p
+			}
+			if byNode == nil && p.expectedNode == node {
+				byNode = p
+			}
 		}
+	}
+	if byNode != nil {
+		matched = byNode
 	}
 	if matched == nil {
 		return nil, [32]byte{}, refuse(401, protocol.ErrUnauthorized, "unauthorized", false)
@@ -287,21 +348,21 @@ func (h *Hub) Serve(w http.ResponseWriter, r *http.Request, authenticated func()
 		authenticated()
 	}
 	if herr == nil {
+		var done func()
+		if done, herr = h.admitRequest(r, q.peer.id, true); herr == nil {
+			// Held through the upgrade; the tunnel itself is long-lived
+			// and bounded by MaxTunnelsPerPeer instead.
+			defer done()
+		}
+	}
+	if herr == nil {
 		h.mu.Lock()
 		herr = h.checkConflict(q)
 		h.mu.Unlock()
 	}
+	// A WebSocket tunnel reserves no codec memory while idle: each stream
+	// charges its receive window when it opens (see Opener).
 	var release func()
-	if herr == nil {
-		need := ReceiveBuffer(h.tcfg)
-		if h.codec != nil {
-			if !h.codec.Try(need) {
-				herr = refuse(503, protocol.ErrBufferExhausted, "codec budget", true)
-			} else {
-				release = func() { h.codec.Put(need) }
-			}
-		}
-	}
 	if herr != nil {
 		h.reject(w, r, q, herr)
 		return
@@ -332,9 +393,18 @@ func (h *Hub) Serve(w http.ResponseWriter, r *http.Request, authenticated func()
 
 // register adds t unless a conflict appeared since the handshake was
 // checked; then t is closed and the conflict returned.
+//
+// The token is checked again under h.mu: a credentials reload installs the
+// new token before it calls Revalidate, which also scans under h.mu, so a
+// handshake authenticated with a token rotated away in between is refused
+// here instead of being registered after the scan.
 func (h *Hub) register(q *tunnelRequest, t *Tunnel) *handshakeError {
 	h.mu.Lock()
-	if herr := h.checkConflict(q); herr != nil {
+	herr := h.checkConflict(q)
+	if herr == nil && !h.currentDigest(q.peer.id, q.digest) {
+		herr = refuse(401, protocol.ErrUnauthorized, "unauthorized", false)
+	}
+	if herr != nil {
 		h.mu.Unlock()
 		t.close()
 		return herr
@@ -409,10 +479,18 @@ func (h *Hub) Opener(id string) transport.StreamOpener {
 			if t == nil {
 				return nil, transport.ErrTunnelUnavailable
 			}
+			// The stream's receive window is this side's memory for the
+			// bytes the database side sends on it. The streams are the
+			// local ingress role's connections, which use Codec directly.
+			release, ok := tryCodec(h.codec, ReceiveBuffer(h.tcfg), nil)
+			if !ok {
+				return nil, fmt.Errorf("%w: codec budget for a tunnel stream", transport.ErrLocalConnBudget)
+			}
 			s, err := openStream(ctx, t.sess)
 			if err == nil {
-				return ownStream(s), nil
+				return resource.LeaseConn(ownStream(s), release), nil
 			}
+			release()
 			if ctx.Err() != nil {
 				return nil, err
 			}
@@ -437,6 +515,9 @@ func (h *Hub) pick(id string) *Tunnel {
 			continue
 		}
 		n := t.sess.NumStreams()
+		if n >= config.MaxStreamsPerTunnel {
+			continue
+		}
 		if best == nil || t.Priority < best.Priority || t.Priority == best.Priority && (n < bestStreams || n == bestStreams && t.ID < best.ID) {
 			best, bestStreams = t, n
 		}
@@ -470,6 +551,17 @@ func openStream(ctx context.Context, s *smux.Session) (net.Conn, error) {
 		}()
 		return nil, ctx.Err()
 	}
+}
+
+// currentDigest reports whether digest is the SHA-256 of peer id's current
+// token. Callers hold h.mu.
+func (h *Hub) currentDigest(id string, digest [32]byte) bool {
+	tok := h.tokens(id)
+	if tok == "" {
+		return false
+	}
+	cur := sha256.Sum256([]byte(tok))
+	return subtle.ConstantTimeCompare(cur[:], digest[:]) == 1
 }
 
 // Revalidate closes every tunnel whose token is no longer its peer's
