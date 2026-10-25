@@ -257,8 +257,9 @@ DNS 解析出错或超时与 TCP 连接被拒一样，以 `502 DBB_DIAL_FAILED` 
 | `socket_write_timeout` | 时长 | `60s` | > 0。 |
 | `sse_write_idle_timeout` | 时长 | `60s` | > 0。 |
 | `backpressure_timeout` | 时长 | `120s` | > 0。 |
-| `shutdown_timeout` | 时长 | `30s` | > 0。 |
+| `shutdown_timeout` | 时长 | `30s` | > 0。停止（第一次 Ctrl-C、SIGTERM、服务停止）时等待已打开会话自行结束的最长时间，超时后关闭它们；数据库客户端通常保持连接池中的连接，因此停止往往会等满这段时间。等待期间每 5 秒记录一次进度；再按一次 Ctrl-C（非 Windows 上也可再发 SIGTERM）立即强制退出，退出码 130。 |
 | `use_environment_proxy` | bool | `false` | 对端连接使用 `HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY`（含小写形式）。每个进程只读取一次。 |
+| `user_agent` | 字符串 | `DBBridge/<协议版本>` | 本节点发往对端的每个请求和 WebSocket 握手使用的 `User-Agent`，替代 Go 默认的 `Go-http-client/1.1`/`2.0`。仅可打印 ASCII，最长 256 字节，首尾不能有空格。 |
 | `sql_replay` | bool | `false` | 必须为 `false`。 |
 
 ## 12. 派生默认值

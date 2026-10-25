@@ -33,6 +33,7 @@ func (c *TripleTransportClient) request(ctx context.Context, client *http.Client
 	if e != nil {
 		return e
 	}
+	SetUserAgent(r.Header, c.tCfg)
 	r.Header.Set("Content-Type", "application/json")
 	if t := c.GetToken(); t != "" {
 		r.Header.Set("Authorization", "Bearer "+t)

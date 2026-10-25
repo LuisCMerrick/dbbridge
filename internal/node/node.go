@@ -213,17 +213,7 @@ func (n *Node) shutdownLocked() {
 	if n.ingressMgr != nil {
 		n.ingressMgr.Drain()
 	}
-	deadline := time.Now().Add(n.cfg.Transport.ShutdownTimeout)
-	for time.Now().Before(deadline) {
-		ing := 0
-		if n.ingressMgr != nil {
-			ing = n.ingressMgr.Count()
-		}
-		if ing == 0 && len(n.registry.GetAllSessions()) == 0 {
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
+	n.drain(time.Now().Add(n.cfg.Transport.ShutdownTimeout))
 	var steps []func()
 	if n.ingressMgr != nil {
 		// Remote cleanup of every ingress session runs under the hard
@@ -254,6 +244,39 @@ func (n *Node) shutdownLocked() {
 	n.running = false
 	n.spent = true
 	slog.Info("dbbridge peer node stopped")
+}
+
+// drainProgressInterval is how often the drain reports what it waits for.
+const drainProgressInterval = 5 * time.Second
+
+// drain waits until no local client connection and no remote peer's session
+// is left, or until deadline (transport.shutdown_timeout). Database clients
+// usually keep pooled connections open, so the wait often runs to the
+// deadline: it reports what it waits for when it starts and every
+// drainProgressInterval, so an operator can tell a drain from a hang and
+// knows a second signal forces the exit.
+func (n *Node) drain(deadline time.Time) {
+	next := time.Now()
+	for {
+		ing := 0
+		if n.ingressMgr != nil {
+			ing = n.ingressMgr.Count()
+		}
+		remote := len(n.registry.GetAllSessions())
+		if ing == 0 && remote == 0 {
+			return
+		}
+		now := time.Now()
+		if !now.Before(deadline) {
+			slog.Warn("drain timeout reached; closing the remaining sessions", "local_connections", ing, "remote_sessions", remote, "shutdown_timeout", n.cfg.Transport.ShutdownTimeout)
+			return
+		}
+		if !now.Before(next) {
+			slog.Info("draining: waiting for open sessions to finish (send the signal again to force exit)", "local_connections", ing, "remote_sessions", remote, "remaining", deadline.Sub(now).Round(time.Second))
+			next = now.Add(drainProgressInterval)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 // ingressCloseDeadline is the deadline given to the ingress manager's

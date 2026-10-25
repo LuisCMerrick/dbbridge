@@ -257,8 +257,9 @@ How each value is used and when to change it is in [Transport](transport.md).
 | `socket_write_timeout` | duration | `60s` | > 0. |
 | `sse_write_idle_timeout` | duration | `60s` | > 0. |
 | `backpressure_timeout` | duration | `120s` | > 0. |
-| `shutdown_timeout` | duration | `30s` | > 0. |
+| `shutdown_timeout` | duration | `30s` | > 0. How long a stop (first Ctrl-C, SIGTERM, service stop) waits for open sessions to finish before closing them; database clients usually keep pooled connections open, so a stop often waits the full time. Progress is logged every 5 s; a second Ctrl-C (or SIGTERM outside Windows) forces an immediate exit with status 130. |
 | `use_environment_proxy` | bool | `false` | Use `HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY` (and lower-case forms) for peer connections. Read once per process. |
+| `user_agent` | string | `DBBridge/<protocol version>` | `User-Agent` of every request and WebSocket handshake this node sends to a peer, instead of Go's `Go-http-client/1.1`/`2.0`. Printable ASCII, at most 256 bytes, no leading or trailing space. |
 | `sql_replay` | bool | `false` | Must be `false`. |
 
 ## 12. Derived defaults

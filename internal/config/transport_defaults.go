@@ -165,6 +165,13 @@ func (c *Config) applyTransportDefaults() error {
 		return fmt.Errorf("transport.suspended_buffer_limit (%d) must be > 0", c.Transport.SuspendedBufferLimit)
 	}
 
+	if c.Transport.UserAgent == "" {
+		c.Transport.UserAgent = DefaultUserAgent
+	}
+	if err := validUserAgent(c.Transport.UserAgent); err != nil {
+		return err
+	}
+
 	c.Transport.CodecBufferLimit, err = parseByteSize(c.Transport.CodecBufferLimitRaw, 32*1024*1024)
 	if err != nil {
 		return fmt.Errorf("invalid transport.codec_buffer_limit: %w", err)

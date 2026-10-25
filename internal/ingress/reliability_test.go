@@ -159,12 +159,17 @@ func TestLargeBidirectionalByteStream(t *testing.T) {
 	for _, mode := range []string{"ws", "http-sse"} {
 		t.Run(mode, func(t *testing.T) {
 			e := e2eIngress(t, mode, "large_stream")
-			e.conn.SetDeadline(time.Now().Add(15 * time.Second))
+			// A correctness test, not a throughput gate: each block must make
+			// progress within the stall bound, while the whole transfer is
+			// bounded only by go test -timeout (race builds are much slower).
+			const stall = 15 * time.Second
 			block := bytes.Repeat([]byte{0, 1, 255, 127, 0, 9, 31, 4}, 8192)
 			const blocks = 800
 			errCh := make(chan error, 1)
+			start := time.Now()
 			go func() {
 				for i := 0; i < blocks; i++ {
+					_ = e.conn.SetWriteDeadline(time.Now().Add(stall))
 					if _, err := e.conn.Write(block); err != nil {
 						errCh <- err
 						return
@@ -174,8 +179,9 @@ func TestLargeBidirectionalByteStream(t *testing.T) {
 			}()
 			buf := make([]byte, len(block))
 			for i := 0; i < blocks; i++ {
+				_ = e.conn.SetReadDeadline(time.Now().Add(stall))
 				if _, err := io.ReadFull(e.conn, buf); err != nil {
-					t.Fatalf("block %d: %v", i, err)
+					t.Fatalf("block %d (no progress for %s, %s elapsed): %v", i, stall, time.Since(start).Round(time.Millisecond), err)
 				}
 				if !bytes.Equal(buf, block) {
 					t.Fatalf("byte mismatch block %d", i)
@@ -184,7 +190,7 @@ func TestLargeBidirectionalByteStream(t *testing.T) {
 			if err := <-errCh; err != nil {
 				t.Fatal(err)
 			}
-			t.Logf("verified %d bytes in each direction", len(block)*blocks)
+			t.Logf("verified %d bytes in each direction in %s", len(block)*blocks, time.Since(start).Round(time.Millisecond))
 		})
 	}
 }

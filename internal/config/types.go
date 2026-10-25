@@ -277,7 +277,11 @@ type TransportConfig struct {
 	BackpressureTimeoutRaw     interface{}    `yaml:"backpressure_timeout"`
 	ShutdownTimeoutRaw         interface{}    `yaml:"shutdown_timeout"`
 	UseEnvironmentProxy        bool           `yaml:"use_environment_proxy"`
-	SQLReplay                  bool           `yaml:"sql_replay"`
+	// UserAgent is the User-Agent header of every request this node sends
+	// to a peer (HTTP requests and WebSocket handshakes). Empty means
+	// DefaultUserAgent ("DBBridge/<protocol version>").
+	UserAgent string `yaml:"user_agent"`
+	SQLReplay bool   `yaml:"sql_replay"`
 
 	// Parsed typed values
 	FrameSize               int           `yaml:"-"`

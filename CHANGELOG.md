@@ -4,6 +4,15 @@
 
 The version of a build is set when it is built (`dbbridge version`).
 
+## [1.4.26.10.25] - 2026-10-25
+
+Protocol 1.4, compatible with 1.4.26.10.23 nodes. Fixes from the shutdown review.
+
+- **User-Agent is configurable.** New `transport.user_agent`; every request and WebSocket handshake sent to a peer now carries it instead of Go's `Go-http-client/1.1`/`2.0`. Default `DBBridge/1.4`. Printable ASCII, at most 256 bytes.
+- **Shutdown progress.** A stop that waits for open sessions (`transport.shutdown_timeout`, 30 s by default; pooled database connections usually keep it waiting the full time) now logs what it waits for at once and every 5 s, with the time left and a reminder that a second Ctrl-C forces the exit, and logs how many sessions it closes when the wait times out. Before, a first Ctrl-C looked like a hang.
+- **Fix.** A health-check probe that never left this node (it timed out waiting for a local connection or request budget) was recorded as an endpoint failure, so local contention could mark a healthy endpoint UNHEALTHY and put it in cooldown. Local resource errors no longer change endpoint health.
+- **Tests.** `TestLargeBidirectionalByteStream` bounds progress per block instead of the whole 50 MiB transfer at 15 s, so race builds on slower machines no longer fail a correctness test on throughput.
+
 ## [1.4.26.10.23] - 2026-10-23
 
 Protocol 1.4. Maintenance and protocol hardening release.
