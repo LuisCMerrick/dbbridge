@@ -23,6 +23,54 @@ type probeCall struct {
 	err    error
 }
 
+// probeCacheEntry is the latest successful probe answer of one endpoint.
+type probeCacheEntry struct {
+	pr *protocol.ProbeResponse
+	at time.Time
+}
+
+// probeReuseMax caps how old a probe answer a new session may build on.
+const probeReuseMax = 15 * time.Second
+
+// probeReuseTTL is how long a successful probe answer may stand in for a
+// fresh one when a new session is created: one and a half health-check
+// intervals (the health loop refreshes it every interval), at most
+// probeReuseMax. A stale answer costs at most one failed create, after which
+// the cache entry is dropped and the next selection probes for real.
+func (m *IngressManager) probeReuseTTL(peer string) time.Duration {
+	interval := 10 * time.Second
+	for _, p := range m.cfg.Peers {
+		if p.ID == peer && p.Failover.HealthcheckInterval > 0 {
+			interval = p.Failover.HealthcheckInterval
+		}
+	}
+	return min(interval+interval/2, probeReuseMax)
+}
+
+func probeKey(peer string, c *transport.TripleTransportClient, node string) string {
+	return peer + "|" + c.URL() + "|" + node
+}
+
+// cachedProbe returns a recent successful probe answer for the endpoint, or
+// nil. Only new-session selection uses it: it saves the probe round trip on
+// every connection while the health loop keeps the answer fresh.
+func (m *IngressManager) cachedProbe(peer string, c *transport.TripleTransportClient, node string) *protocol.ProbeResponse {
+	m.preMu.Lock()
+	defer m.preMu.Unlock()
+	e, ok := m.probeCache[probeKey(peer, c, node)]
+	if !ok || time.Since(e.at) > m.probeReuseTTL(peer) {
+		return nil
+	}
+	return e.pr
+}
+
+// invalidateProbe drops the cached answer, so the next selection probes.
+func (m *IngressManager) invalidateProbe(peer string, c *transport.TripleTransportClient, node string) {
+	m.preMu.Lock()
+	delete(m.probeCache, probeKey(peer, c, node))
+	m.preMu.Unlock()
+}
+
 // probeTimeout is the per-probe deadline: healthcheck_timeout, never longer
 // than control_request_timeout.
 func (m *IngressManager) probeTimeout(peer string) time.Duration {
@@ -43,7 +91,7 @@ func (m *IngressManager) probeTimeout(peer string) time.Duration {
 // cost one probe and one probe slot. The shared request runs under the
 // manager's context with probeTimeout; each caller waits with its own ctx.
 func (m *IngressManager) probe(ctx context.Context, peer string, c *transport.TripleTransportClient, node string) (*protocol.ProbeResponse, error) {
-	key := peer + "|" + c.URL() + "|" + node
+	key := probeKey(peer, c, node)
 	m.preMu.Lock()
 	call := m.probeFlights[key]
 	if call == nil {
@@ -66,6 +114,12 @@ func (m *IngressManager) runProbe(key string, call *probeCall, peer string, c *t
 	defer func() {
 		m.preMu.Lock()
 		delete(m.probeFlights, key)
+		switch {
+		case call.err == nil && call.result != nil:
+			m.probeCache[key] = probeCacheEntry{call.result, time.Now()}
+		case call.err != nil && !errors.Is(call.err, errLocalBusy) && !localResourceError(call.err):
+			delete(m.probeCache, key)
+		}
 		m.preMu.Unlock()
 		close(call.done)
 	}()
@@ -135,20 +189,42 @@ func (m *IngressManager) healthLoop(p config.PeerConfig) {
 	}
 	t := time.NewTicker(interval)
 	defer t.Stop()
+	// The first round runs at once, so the first new session after a start
+	// can already reuse its answer instead of probing (see cachedProbe). A
+	// reverse peer waits one interval: its tunnel is usually not dialed in
+	// yet, and a probe now would only record a failure.
+	first := make(chan time.Time, 1)
+	if !p.IsReverse() {
+		first <- time.Now()
+	}
 	for {
 		select {
 		case <-m.stopCh:
 			return
+		case <-first:
 		case <-t.C:
-			for _, ep := range m.linkManagers[p.ID].GetEndpoints() {
-				// The probe is bounded by healthcheck_timeout and records its
-				// own outcome on the endpoint; local contention is not
-				// recorded because the endpoint was never contacted.
-				_, _ = m.probe(m.ctx, p.ID, m.clients[p.ID].WithURL(ep.URL), p.ExpectedNodeID)
-				if m.ctx.Err() != nil {
-					return
-				}
+		}
+		for _, ep := range m.linkManagers[p.ID].GetEndpoints() {
+			// The probe is bounded by healthcheck_timeout and records its
+			// own outcome on the endpoint; local contention is not
+			// recorded because the endpoint was never contacted.
+			c := m.clients[p.ID].WithURL(ep.URL)
+			pr, err := m.probe(m.ctx, p.ID, c, p.ExpectedNodeID)
+			if m.ctx.Err() != nil {
+				return
+			}
+			if err == nil && m.peerAllowsWS(p) && contains(pr.Transports, "ws") && ep.TransportAvailable(time.Now(), "ws") {
+				m.refreshPrecheck(p.ID, c, p.ExpectedNodeID, pr.InstanceID, interval+interval/2)
 			}
 		}
 	}
+}
+
+// peerAllowsWS reports whether the peer's transport policy can select WS.
+func (m *IngressManager) peerAllowsWS(p config.PeerConfig) bool {
+	strategy := m.cfg.Transport.Protocol
+	if p.Transport != nil && p.Transport.Protocol != "" {
+		strategy = p.Transport.Protocol
+	}
+	return strategy != "http-sse"
 }

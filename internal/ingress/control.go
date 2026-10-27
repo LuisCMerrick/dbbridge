@@ -84,7 +84,7 @@ func (s *ingressSession) control(g *generation) {
 		s.mu.Lock()
 		nonce := s.heartbeatNonce
 		s.mu.Unlock()
-		if e := s.ack(g, false, nonce, time.Now().Add(s.m.cfg.Transport.ControlRequestTimeout)); e != nil {
+		if e := s.ack(g, g.readyAckPending.Swap(false), nonce, time.Now().Add(s.m.cfg.Transport.ControlRequestTimeout)); e != nil {
 			s.fault(g, observability.FaultControl, e, false)
 			return
 		}

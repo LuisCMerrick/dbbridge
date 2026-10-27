@@ -148,12 +148,17 @@ func e2eIngress(t *testing.T, mode, special string) *e2eEnv {
 				return
 			}
 		}
-		if strings.HasSuffix(r.URL.Path, "/ack") && (special == "reject_ready" || special == "terminal_ack") {
+		if special == "reject_ready_legacy" && strings.HasSuffix(r.URL.Path, "/events") {
+			// An egress that predates implicit ready.
+			base.ServeHTTP(stripImplicit{w}, r)
+			return
+		}
+		if strings.HasSuffix(r.URL.Path, "/ack") && (special == "reject_ready" || special == "reject_ready_legacy" || special == "terminal_ack") {
 			body, _ := io.ReadAll(r.Body)
 			r.Body = io.NopCloser(bytes.NewReader(body))
 			var req protocol.AckRequest
 			json.Unmarshal(body, &req)
-			if special == "reject_ready" && req.ReadyReceived {
+			if (special == "reject_ready" || special == "reject_ready_legacy") && req.ReadyReceived {
 				w.WriteHeader(403)
 				json.NewEncoder(w).Encode(protocol.ErrorResponse{Code: protocol.ErrUnauthorized, SessionClosed: true})
 				return
@@ -270,13 +275,31 @@ func TestRealByteRoundTrip(t *testing.T) {
 		})
 	}
 }
+
+// Against an egress that requires the ready ACK before data (no
+// X-DBB-Implicit-Ready), a rejected ready ACK ends the session before any
+// byte reaches the backend.
 func TestReadyAckFailureClosesBeforeData(t *testing.T) {
-	e := e2eIngress(t, "ws", "reject_ready")
+	e := e2eIngress(t, "http-sse", "reject_ready_legacy")
 	e.conn.Write([]byte("unauthorized-write"))
 	select {
 	case p := <-e.received:
 		t.Fatalf("backend got %q despite rejected ready ACK", p)
 	case <-time.After(300 * time.Millisecond):
+	}
+}
+
+// With implicit ready the first frame may reach the backend before the ready
+// ACK is answered (the authenticated Upgrade already admitted the stream), but
+// a rejected ready ACK still ends the session and closes the client.
+func TestReadyAckFailureClosesImplicit(t *testing.T) {
+	e := e2eIngress(t, "ws", "reject_ready")
+	e.conn.Write([]byte("early-write"))
+	e.conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	if _, err := io.Copy(io.Discard, e.conn); err != nil {
+		if ne, ok := err.(net.Error); ok && ne.Timeout() {
+			t.Fatal("client stayed open after the egress rejected the ready ACK")
+		}
 	}
 }
 func TestBadWSIdentityMustNotFallback(t *testing.T) {

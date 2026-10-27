@@ -22,7 +22,7 @@ func contains(v []string, s string) bool {
 	return false
 }
 func (m *IngressManager) choose(ctx context.Context, p config.PeerConfig, owner, policy string, forNew bool) (*transport.TripleTransportClient, *link.Endpoint, string, error) {
-	sel, err := m.chooseUntried(ctx, p, owner, policy, forNew, nil)
+	sel, err := m.chooseUntried(ctx, p, owner, policy, forNew, false, nil)
 	return sel.c, sel.ep, sel.mode, err
 }
 
@@ -36,6 +36,9 @@ type selection struct {
 	// fellBack is true when auto chose SSE on an endpoint that offers WS,
 	// because WS was not usable there.
 	fellBack bool
+	// cachedProbe is true when pr is a reused health-loop answer rather
+	// than a probe made for this selection.
+	cachedProbe bool
 }
 
 // Attempts belong to one immutable create/resume operation. A successful probe
@@ -48,11 +51,21 @@ type selection struct {
 // cooling down, the selection waits (with jitter) until the earliest one
 // becomes eligible or ctx, the create retry / recovery deadline, ends, and
 // then runs one more pass; callers keep their own jittered backoff.
-func (m *IngressManager) chooseUntried(ctx context.Context, p config.PeerConfig, owner, policy string, forNew bool, attempted map[string]bool) (selection, error) {
+//
+// reuse lets a new session (no owner yet) build on a recent health-loop probe
+// answer instead of probing first; see cachedProbe.
+func (m *IngressManager) chooseUntried(ctx context.Context, p config.PeerConfig, owner, policy string, forNew, reuse bool, attempted map[string]bool) (selection, error) {
 	probed := map[string]*protocol.ProbeResponse{}
 	var sel selection
 	var err error
-	sel.c, sel.ep, sel.mode, sel.pr, sel.fellBack, err = m.choosePass(ctx, p, owner, policy, forNew, attempted, false, probed)
+	var cached map[string]bool
+	if reuse && owner == "" && forNew {
+		cached = map[string]bool{}
+	}
+	sel.c, sel.ep, sel.mode, sel.pr, sel.fellBack, err = m.choosePass(ctx, p, owner, policy, forNew, attempted, false, probed, cached)
+	if err == nil && sel.ep != nil {
+		sel.cachedProbe = cached[sel.ep.ID]
+	}
 	if err == nil || fatalError(err) || ctx.Err() != nil {
 		return sel, err
 	}
@@ -62,7 +75,7 @@ func (m *IngressManager) chooseUntried(ctx context.Context, p config.PeerConfig,
 	}
 	// Probe again: the earlier answers predate the wait.
 	clear(probed)
-	sel.c, sel.ep, sel.mode, sel.pr, sel.fellBack, err = m.choosePass(ctx, p, owner, policy, forNew, attempted, false, probed)
+	sel.c, sel.ep, sel.mode, sel.pr, sel.fellBack, err = m.choosePass(ctx, p, owner, policy, forNew, attempted, false, probed, nil)
 	return sel, err
 }
 
@@ -130,7 +143,9 @@ func orderedEndpoints(mgr *link.PeerLinkManager, failover bool) []*link.Endpoint
 	return out
 }
 
-func (m *IngressManager) choosePass(ctx context.Context, p config.PeerConfig, owner, policy string, forNew bool, attempted map[string]bool, ignoreCooldown bool, probed map[string]*protocol.ProbeResponse) (*transport.TripleTransportClient, *link.Endpoint, string, *protocol.ProbeResponse, bool, error) {
+// cached, when non-nil, allows reusing a recent probe answer per endpoint and
+// records the endpoints whose answer was reused.
+func (m *IngressManager) choosePass(ctx context.Context, p config.PeerConfig, owner, policy string, forNew bool, attempted map[string]bool, ignoreCooldown bool, probed map[string]*protocol.ProbeResponse, cached map[string]bool) (*transport.TripleTransportClient, *link.Endpoint, string, *protocol.ProbeResponse, bool, error) {
 	mgr := m.linkManagers[p.ID]
 	var unsafe error
 	var mismatch error
@@ -151,6 +166,11 @@ func (m *IngressManager) choosePass(ctx context.Context, p config.PeerConfig, ow
 		}
 		c := m.clients[p.ID].WithURL(ep.URL)
 		pr, e := probed[ep.ID], error(nil)
+		if pr == nil && cached != nil {
+			if pr = m.cachedProbe(p.ID, c, p.ExpectedNodeID); pr != nil {
+				cached[ep.ID] = true
+			}
+		}
 		if pr == nil {
 			pr, e = m.probe(ctx, p.ID, c, p.ExpectedNodeID)
 		}

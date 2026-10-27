@@ -134,6 +134,7 @@ func (c *TripleTransportClient) closeIdleExcept(control bool, self http.RoundTri
 			ep.mu.Lock()
 			clients = append([]*http.Client{ep.dataClient, ep.sseClient}, ep.sseShards...)
 			ep.mu.Unlock()
+			ep.dropWSSpare(false)
 		}
 		for _, cl := range clients {
 			if cl != nil && (self == nil || cl.Transport != self) {

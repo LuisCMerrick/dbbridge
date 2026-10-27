@@ -29,7 +29,8 @@ func (s *ingressSession) create(ctx context.Context, strategy string) (c *transp
 		if s.owner != "" {
 			policy = mode
 		}
-		sel, chooseErr := m.chooseUntried(ctx, s.p, s.owner, policy, s.owner == "", attempted)
+		ownerFromSel := s.owner == ""
+		sel, chooseErr := m.chooseUntried(ctx, s.p, s.owner, policy, ownerFromSel, true, attempted)
 		err = chooseErr
 		if err == nil {
 			c, ep = sel.c, sel.ep
@@ -66,6 +67,20 @@ func (s *ingressSession) create(ctx context.Context, strategy string) (c *transp
 			break
 		}
 		var remote *transport.RemoteError
+		if sel.cachedProbe {
+			// The selection reused a health-loop answer: never build a
+			// second attempt on it.
+			m.invalidateProbe(s.p.ID, c, s.p.ExpectedNodeID)
+			if ownerFromSel && errors.As(err, &remote) && remote.Trusted && remote.Code == protocol.ErrInstanceMismatch {
+				// The endpoint restarted (or failed over) since that answer:
+				// the create was refused before anything was created, so
+				// choose again from a real probe, with no owner yet.
+				s.mu.Lock()
+				s.owner = ""
+				s.mu.Unlock()
+				continue
+			}
+		}
 		if fatalError(err) || (errors.As(err, &remote) && remote.Trusted && !safeRetry(err)) {
 			s.stop(err)
 			return nil, nil, "", false

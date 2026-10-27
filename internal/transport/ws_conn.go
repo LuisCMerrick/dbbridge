@@ -17,7 +17,13 @@ type WSSessionConn struct {
 	writeIdle time.Duration
 	closed    bool
 	closedMu  sync.Mutex
+	// implicitReady: the egress advertised protocol.HeaderImplicitReady.
+	implicitReady bool
 }
+
+// ImplicitReady reports whether the egress activates the initial attach on
+// the first upstream frame (protocol.HeaderImplicitReady).
+func (c *WSSessionConn) ImplicitReady() bool { return c.implicitReady }
 
 func (w *WSSessionConn) StreamID() string {
 	return w.streamID

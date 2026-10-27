@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"dbbridge/internal/link"
@@ -33,6 +34,10 @@ type generation struct {
 	pending                []wireMessage
 	active                 bool
 	endpoint               *link.Endpoint
+	// readyAckPending: the initial attach went active on an implicit-ready
+	// egress before its ready ACK was sent; the control writer's first ACK
+	// carries it (protocol.HeaderImplicitReady).
+	readyAckPending atomic.Bool
 	// Protected by ingressSession.mu; only complete WS writes start this clock.
 	upSentOffset   uint64
 	upPendingSince time.Time
@@ -136,12 +141,34 @@ func (s *ingressSession) attach(parent context.Context, c *transport.TripleTrans
 	}
 	g.stream = ready.StreamID
 	c.BindStream(s.sid, epoch, g.stream, mode)
-	if e = s.ack(g, true, "", deadline); e != nil {
-		g.close()
-		return nil, e
-	}
 	nonce := ""
-	for i := 0; i < 16 && nonce == ""; i++ {
+	implicit := false
+	if resumeID == "" {
+		g.mu.Lock()
+		implicit = g.ws != nil && g.ws.ImplicitReady() || g.sub != nil && g.sub.ImplicitReady()
+		g.mu.Unlock()
+	}
+	switch {
+	case implicit:
+		// The egress activates the initial attach on our first upstream
+		// frame or on the ready ACK, whichever arrives first, so data may
+		// flow now: the control writer sends the ready ACK at once.
+		g.readyAckPending.Store(true)
+	case resumeID == "":
+		// An initial attach is active once the ready ACK is accepted. The
+		// first ping's nonce only completes a recovery, so the control
+		// writer echoes it later instead of the attach waiting for it.
+		if e = s.ack(g, true, "", deadline); e != nil {
+			g.close()
+			return nil, e
+		}
+	default:
+		if e = s.ack(g, true, "", deadline); e != nil {
+			g.close()
+			return nil, e
+		}
+	}
+	for i := 0; resumeID != "" && i < 16 && nonce == ""; i++ {
 		msg, e := s.readWire(g, deadline)
 		if e != nil {
 			g.close()
@@ -153,13 +180,16 @@ func (s *ingressSession) attach(parent context.Context, c *transport.TripleTrans
 			g.pending = append(g.pending, msg)
 		}
 	}
-	if nonce == "" {
-		g.close()
-		return nil, transport.ErrProtocol
-	}
-	if e = s.ack(g, false, nonce, deadline); e != nil {
-		g.close()
-		return nil, e
+	if resumeID != "" {
+		// A resumed epoch completes recovery with the first ping's nonce.
+		if nonce == "" {
+			g.close()
+			return nil, transport.ErrProtocol
+		}
+		if e = s.ack(g, false, nonce, deadline); e != nil {
+			g.close()
+			return nil, e
+		}
 	}
 	s.mu.Lock()
 	if s.closed.Load() || ctx.Err() != nil || !time.Now().Before(deadline) || !s.deadline.IsZero() && !time.Now().Before(s.deadline) {

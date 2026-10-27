@@ -38,9 +38,18 @@ Egress 在探测应答中告知自己接受的载体（`http.allowed_transports`
 
 **何时不回退。** `401`（无论是否经过验证）或经过验证的 `403` 属于认证或授权结论：会话失败，不回退。升级之后出现的协议违规（子协议缺失或不符、hello 中的协议版本错误、控制 JSON 格式错误、非法 WebSocket 帧）、TLS 失败，或节点/实例/协议不匹配，会把该 endpoint 标记为 `MISMATCHED`，Ingress 不会在该 endpoint 上改用 SSE；如果故障切换允许，就转向其他 endpoint。
 
-预检结果按 endpoint 缓存 30 s；临时性应答（`408`、`425`、`429`、`5xx`）不缓存。每个成功创建的会话最多计一次回退，指标为 `dbb_session_events_total{event="fallback",from="ws",to="http-sse"}`。
+预检结果按 endpoint 缓存 30 s；临时性应答（`408`、`425`、`429`、`5xx`）不缓存。某个 endpoint 上正在使用 WebSocket 时（最近 2 分钟内有会话用过），健康检查会在成功结果过期前续期；成功结果过期后 5 分钟内仍会被使用，同时在后台重新预检，所以新会话不必等待预检。如果期间 WebSocket 路径已经失效，该会话的升级失败，载体按上文冷却并回退。每个成功创建的会话最多计一次回退，指标为 `dbb_session_events_total{event="fallback",from="ws",to="http-sse"}`。
 
 Egress 按已认证身份限制 WebSocket 预检：最多 2 个并发，每秒 4 次，突发 4 次。超出时返回 `429 DBB_QUOTA_EXCEEDED` 并带 `Retry-After`，不占用数据库会话。
+
+**建立连接的开销。** 对端处于热状态时，一个新的本地连接在第一个字节到达数据库之前需要与 Egress 往返三次：create、载体（WebSocket 升级或 SSE 事件流）以及数据本身。
+
+- 新会话复用最近一次成功的健康检查探测结果（不超过 1.5 × `healthcheck_interval`，且不超过 15 s），不再先探测。如果 Egress 期间重启过，create 会被 `DBB_INSTANCE_MISMATCH` 拒绝，会话随即重新探测；create 的其他失败也会丢弃缓存结果。健康检查在启动时立即执行一次（正向对端；反向对端在一个间隔后才首次探测，此时隧道通常已建立）。
+- 每次建立 WebSocket 会话后，Ingress 会向该 endpoint 预先建立一条备用连接（TCP 与 TLS），4 s 内的下一个会话直接在它上面发送升级请求。未使用的备用连接 4 s 后关闭且不续建，空闲的对端不会多占连接。使用环境变量代理时不保留备用连接。使用前会检测服务端是否已关闭备用连接；备用连接在收到任何应答前失败时，改用一次全新的拨号。
+- Egress 在 WebSocket 升级和 SSE 事件流的应答中带上 `X-DBB-Implicit-Ready: 1`：新会话的数据面会在第一个标明该流的上行帧或 FIN 到达时激活（只有 `ready` 消息携带流 ID），所以 Ingress 发送数据时不必等待 ready ACK 返回，ACK 仍会立即发出。没有该响应头时（旧版 Egress，或代理丢弃了它），Ingress 照旧等待 ready ACK。恢复中的会话始终等待 ready ACK。
+- 新会话发送数据前不再等待第一个心跳 ping，nonce 由控制通道随后回传。恢复时仍先确认 nonce。
+
+在 HTTP/1.1 上每条 SSE 事件流都要独占一个连接，所以没有 HTTP/2 直达 Egress 时，`http-sse` 在连接池没有空闲连接的情况下多一次往返（带 TLS 时两次）。
 
 ## 2. 协商值
 
@@ -158,7 +167,7 @@ Egress 的 `http.listen` 前面可以放置反向代理、负载均衡或 API �
 
 **请求头**：原样透传 `Authorization`（Bearer 令牌）、`X-DBB-Session-ID`、`X-DBB-Session-Token`、`X-DBB-Instance-ID`、`X-DBB-Epoch`、`X-DBB-Stream-ID`、`X-DBB-Offset`、`X-DBB-Length`、`X-DBB-SHA256`、`X-DBB-Nonce`、`X-DBB-Confirm-Up-Offset`、`X-DBB-Ack-Down-Offset`、`X-DBB-WS-Purpose`、`X-DBB-Features`、`Content-Length`。请求头总大小必须保持在 16 KiB 以内。
 
-**响应头**：透传 `X-DBB-Instance-ID`（Ingress 用它确认错误应答确实来自对端）和 `Retry-After`。不要用代理自己的错误页替换 DBBridge 的错误响应体。
+**响应头**：透传 `X-DBB-Instance-ID`（Ingress 用它确认错误应答确实来自对端）、`X-DBB-Implicit-Ready`（每个新会话省一次往返，见第 1 节）和 `Retry-After`。不要用代理自己的错误页替换 DBBridge 的错误响应体。
 
 **WebSocket**：转发升级请求所需的 `Upgrade`、`Connection`、`Sec-WebSocket-Key`、`Sec-WebSocket-Version`、`Sec-WebSocket-Protocol: dbbridge.v1.5`（以及应答中的 `Sec-WebSocket-Protocol`）。代理做不到时，使用 `auto`（会话回退到 SSE）或 `http-sse`。
 

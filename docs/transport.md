@@ -38,9 +38,18 @@ The egress advertises the carriers it accepts (`http.allowed_transports`) in its
 
 **When it does not.** A `401` (verified or not) or a verified `403` is an authentication or authorization verdict: the session fails, nothing falls back. A protocol violation after the upgrade (missing or wrong subprotocol, wrong protocol version in the hello, malformed control JSON, invalid WebSocket frames), a TLS failure, or a node/instance/protocol mismatch marks the endpoint `MISMATCHED` and the ingress does not use SSE on that endpoint; it moves to another endpoint if failover allows.
 
-Precheck results are cached for 30 s per endpoint; temporary answers (`408`, `425`, `429`, `5xx`) are not cached. A fallback is counted once per created session in `dbb_session_events_total{event="fallback",from="ws",to="http-sse"}`.
+Precheck results are cached for 30 s per endpoint; temporary answers (`408`, `425`, `429`, `5xx`) are not cached. While WebSocket is in use on an endpoint (a session used it within the last 2 minutes), the health check renews a successful result before it expires, and a successful result up to 5 minutes past its 30 s is still used while a background check renews it, so a new session does not wait for a precheck. If the WebSocket path broke meanwhile, that session's upgrade fails and the carrier cools down and falls back as described above. A fallback is counted once per created session in `dbb_session_events_total{event="fallback",from="ws",to="http-sse"}`.
 
 The egress limits WebSocket prechecks per authenticated identity: 2 concurrent, 4 per second, burst 4. Above that it answers `429 DBB_QUOTA_EXCEEDED` with `Retry-After`; no database session is used.
+
+**Connection setup cost.** On a warm peer a new local connection costs three round trips to the egress before its first byte reaches the database: create, the carrier (WebSocket upgrade, or the SSE event stream) and the data itself.
+
+- New sessions reuse the latest successful health-check probe (at most 1.5 × `healthcheck_interval`, at most 15 s old) instead of probing first. If the egress restarted since, the create is refused with `DBB_INSTANCE_MISMATCH` and the session probes again; any other create failure also drops the cached answer. The health check runs once at start (forward peers; a reverse peer first probes after one interval, once its tunnel is usually up).
+- After each WebSocket session dial the ingress opens one spare connection (TCP and TLS) to the endpoint; the next session sends its upgrade on it within 4 s. An unused spare is closed after 4 s and not renewed, so an idle peer carries no extra connections. No spare is kept when a proxy from the environment is in use. A spare the server closed is detected before use, and a spare that fails before any answer is replaced by one fresh dial.
+- The egress answers the WebSocket upgrade and the SSE event stream with `X-DBB-Implicit-Ready: 1`: it then activates a new session's data plane on the first upstream frame or FIN naming the stream (only the `ready` message carries the stream ID), so the ingress sends data without waiting for its ready ACK to return; the ACK still follows at once. Without the header (an older egress, or a proxy that drops it) the ingress waits for the ready ACK as before. A resumed session always waits for its ready ACK.
+- A new session no longer waits for the first heartbeat ping before sending data; the control channel echoes its nonce afterwards. A resume still confirms the nonce first.
+
+Over HTTP/1.1 every SSE event stream needs a connection of its own, so `http-sse` without HTTP/2 to the egress costs one more round trip (two with TLS) when no idle connection is pooled.
 
 ## 2. Negotiated values
 
@@ -158,7 +167,7 @@ A reverse proxy, load balancer or API gateway may sit in front of the egress `ht
 
 **Request headers** — pass through unchanged: `Authorization` (bearer token), `X-DBB-Session-ID`, `X-DBB-Session-Token`, `X-DBB-Instance-ID`, `X-DBB-Epoch`, `X-DBB-Stream-ID`, `X-DBB-Offset`, `X-DBB-Length`, `X-DBB-SHA256`, `X-DBB-Nonce`, `X-DBB-Confirm-Up-Offset`, `X-DBB-Ack-Down-Offset`, `X-DBB-WS-Purpose`, `X-DBB-Features`, `Content-Length`. The total request header size must stay within 16 KiB.
 
-**Response headers** — pass through `X-DBB-Instance-ID` (the ingress uses it to verify that an error answer really came from the peer) and `Retry-After`. Do not replace DBBridge error bodies with proxy error pages.
+**Response headers** — pass through `X-DBB-Instance-ID` (the ingress uses it to verify that an error answer really came from the peer), `X-DBB-Implicit-Ready` (saves one round trip per new session; see §1) and `Retry-After`. Do not replace DBBridge error bodies with proxy error pages.
 
 **WebSocket** — forward the upgrade: `Upgrade`, `Connection`, `Sec-WebSocket-Key`, `Sec-WebSocket-Version`, `Sec-WebSocket-Protocol: dbbridge.v1.5` (and the response's `Sec-WebSocket-Protocol`). If the proxy cannot do this, use `auto` (sessions fall back to SSE) or `http-sse`.
 
