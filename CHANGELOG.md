@@ -4,6 +4,20 @@
 
 The version of a build is set when it is built (`dbbridge version`).
 
+## [1.5.26.10.27] - 2026-10-27
+
+Protocol 1.5, wire-compatible with 1.5.26.10.25 nodes. Data-plane performance work from the optimization review, and a stall fix.
+
+- **Fix: 5 s stall after a server-side close.** When the backend closed a connection first (HTTP `Connection: close`, short-lived connections), the egress could drop the carrier before the ingress saw the acknowledgement of its upstream FIN; the ingress counted that normal close as a carrier failure and cooled the endpoint transport for `failover.cooldown` (5 s), so the next new session waited about 5 s. In a loopback test about one in three short connections was affected. The ingress now confirms the close over the control channel whenever either FIN acknowledgement is still missing, as it already did for the downstream one.
+- **Upstream digest verified once.** An upstream frame was hashed (SHA-256) up to three times on the egress (WebSocket decode, the transport handler, and again inside the session under its lock). It is now verified once per transport, outside the session lock, and the session adopts the transport's buffer instead of copying it.
+- **Downstream frames encoded with one copy.** The egress sender reads frames as views of the session window and encodes them straight into the WebSocket frame or the SSE event (SHA-256 and Base64 streamed over the segments), instead of first copying each frame out of the window. SSE events are built as one byte buffer without `fmt`/string concatenation.
+- **Ingress buffers.** Local-socket read buffers are recycled by power-of-two size class (a buffer whose HTTP send failed is never recycled); WebSocket frames are written as header plus payload through one message writer instead of being joined first; SSE frame lines are buffered at their declared size instead of growing by appends.
+- **Egress backend reader** blocked on the global payload budget now waits on the budget's release notification (with a 250 ms safety poll) instead of polling every 10 ms.
+- **Benchmarks.** `BenchmarkByteWindowDownstream`, `BenchmarkIngestUpFrame` and the loopback end-to-end `BenchmarkForward` (ws, http-sse). Loopback, 2 vCPU arm64, before → after: http-sse 140 → 250 MB/s with 54% fewer bytes allocated; ws throughput unchanged (≈280 MB/s, bound by SHA-256 and syscalls) with 45% fewer bytes allocated; upstream ingest of a 64 KiB frame 140 → 65 µs.
+- **Docs.** Capacity planning describes when and how to set `GOMEMLIMIT` (not set by default).
+
+Codec budget charges are unchanged (conservative): the new paths use less memory than they reserve.
+
 ## [1.5.26.10.25] - 2026-10-25
 
 Protocol 1.5, compatible with 1.5.26.10.24 nodes. Fixes from the 1.5.26.10.24 audit and shutdown review.

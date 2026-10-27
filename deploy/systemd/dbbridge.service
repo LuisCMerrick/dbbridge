@@ -19,6 +19,9 @@ WorkingDirectory=/etc/dbbridge
 # Optional; prefer token_file/credentials_file. If used, keep it 0600 root:root.
 # Values set here take precedence over an install-time --env-file snapshot.
 EnvironmentFile=-/etc/dbbridge/environment
+# Optional GC soft limit, not set by default; see docs/operations.md
+# "Capacity planning". Under a hard memory limit, e.g.:
+# Environment=GOMEMLIMIT=400MiB
 ExecStart=/usr/local/bin/dbbridge run --config /etc/dbbridge/peer.yaml --service-name dbbridge --log-format json
 # `systemctl reload dbbridge` re-reads token files and the auth/token settings
 # immediately (they are also re-read every auth.reload_interval). Tokens from

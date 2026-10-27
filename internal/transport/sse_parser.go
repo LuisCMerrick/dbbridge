@@ -195,10 +195,14 @@ func (s *SSESubscriber) NextEventWithProgress(parent context.Context, timeout ti
 		// itself a control event. A frame line declares its own size in its
 		// "<offset>:<length>:" prefix; only a line without a usable prefix
 		// reserves for the largest frame allowed.
+		hint := 0
 		if isData && (!seen["event"] || ev.Event == "data") {
 			n, ok, e := s.peekDeclaredDataLine()
 			if e != nil {
 				return nil, e
+			}
+			if ok {
+				hint = n
 			}
 			switch {
 			case !ok:
@@ -218,6 +222,9 @@ func (s *SSESubscriber) NextEventWithProgress(parent context.Context, timeout ti
 		if isData {
 			lineProgress = onData
 		}
+		// A frame line is buffered at its declared size up front instead of
+		// growing through repeated appends; the size is already charged.
+		s.lineHint = min(hint, capBytes-total)
 		line, e := s.readSSELine(&total, capBytes, lineProgress)
 		if e != nil {
 			return nil, e
@@ -368,6 +375,10 @@ func (s *SSESubscriber) peekLineStart() (byte, error) {
 // empty line.
 func (s *SSESubscriber) readSSELine(total *int, limit int, onData func()) ([]byte, error) {
 	var line []byte
+	if total != nil && s.lineHint > 0 {
+		line = make([]byte, 0, s.lineHint)
+	}
+	s.lineHint = 0
 	n := 0
 	if total != nil {
 		n = *total

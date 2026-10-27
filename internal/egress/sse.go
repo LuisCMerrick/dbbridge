@@ -6,9 +6,9 @@ import (
 	"dbbridge/internal/observability"
 	"dbbridge/internal/protocol"
 	"dbbridge/internal/session"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -61,29 +61,41 @@ func (s *Server) handleSSEEvents(w http.ResponseWriter, r *http.Request, sess *s
 		timeout = 60 * time.Second
 	}
 	write := func(kind string, v any, id string) error {
-		var payload string
-		if kind == "data" {
-			payload = v.(string)
-		} else {
-			b, e := json.Marshal(v)
-			if e != nil {
-				return e
-			}
-			payload = string(b)
+		b, e := json.Marshal(v)
+		if e != nil {
+			return e
 		}
 		event := ""
 		if id != "" {
 			event = "id: " + id + "\n"
 		}
-		event += "event: " + kind + "\ndata: " + payload + "\n\n"
-		return writeSSEProgress(ctx, w, rc, &deadlineMu, event, timeout)
+		event += "event: " + kind + "\ndata: " + string(b) + "\n\n"
+		return writeSSEProgress(ctx, w, rc, &deadlineMu, []byte(event), timeout)
 	}
 	if write("ready", s.ready(sess, ep, stream, "http-sse"), "") != nil {
 		return
 	}
 	_ = s.streamWriter(ctx, sess, ep, stream, func(kind string, data []byte, v any, end uint64) error {
 		if kind == "data" {
-			return write(kind, protocol.FormatSSEData(end-uint64(len(data)), data), fmt.Sprintf("%d:%d", ep, end))
+			f := v.(downFrame)
+			// The event is assembled in one buffer: payload segments are
+			// hashed and Base64-encoded straight into it.
+			n := 0
+			for _, seg := range f.segs {
+				n += len(seg)
+			}
+			event := make([]byte, 0, 96+base64.StdEncoding.EncodedLen(n))
+			event = append(event, "id: "...)
+			event = strconv.AppendUint(event, ep, 10)
+			event = append(event, ':')
+			event = strconv.AppendUint(event, end, 10)
+			event = append(event, "\nevent: data\ndata: "...)
+			event, err := protocol.AppendSSEDataSegments(event, f.offset, f.segs)
+			if err != nil {
+				return err
+			}
+			event = append(event, "\n\n"...)
+			return writeSSEProgress(ctx, w, rc, &deadlineMu, event, timeout)
 		}
 		return write(kind, v, "")
 	})
@@ -141,14 +153,17 @@ func (s *Server) handleUp(w http.ResponseWriter, r *http.Request, sess *session.
 	}
 	defer codec.Put(int64(length))
 	_ = http.NewResponseController(w).SetReadDeadline(time.Now().Add(s.upBodyTimeout(length)))
-	body, e := io.ReadAll(io.LimitReader(r.Body, int64(length)+1))
-	if e != nil || len(body) != length {
+	// Read into an exact-size buffer the session can adopt (see
+	// IngestUpFrameOwned) instead of an io.ReadAll buffer it would copy.
+	body, e := readExactBody(r.Body, length)
+	if e != nil {
 		writeJSONError(w, 400, protocol.ErrBadFrame, "body", false, false)
 		return
 	}
 	digest := sha256.Sum256(body)
+	sha := hex.EncodeToString(digest[:])
 	expected := r.Header.Get(protocol.HeaderSHA256)
-	if hex.EncodeToString(digest[:]) != expected {
+	if sha != expected {
 		writeJSONError(w, 400, protocol.ErrBadDigest, "digest", false, false)
 		return
 	}
@@ -172,7 +187,7 @@ func (s *Server) handleUp(w http.ResponseWriter, r *http.Request, sess *session.
 		return
 	}
 	atomic.AddInt64(&observability.DefaultMetrics.PiggybackAckTotal, 1)
-	written, accepted, _, e := sess.IngestUpFrame(ep, off, length, expected, body)
+	written, accepted, _, _, e := sess.IngestUpFrameOwned(ep, off, sha, body, false)
 	if e != nil {
 		s.writeStreamError(w, sess, ep, stream, e)
 		return
@@ -189,7 +204,7 @@ func (s *Server) handleUp(w http.ResponseWriter, r *http.Request, sess *session.
 // Flushing bounded pieces exposes stream progress even when a whole SSE event
 // takes longer than the idle timeout. The deadline is scoped to this HTTP/2
 // stream; other multiplexed streams and independent controls are unaffected.
-func writeSSEProgress(ctx context.Context, w http.ResponseWriter, rc *http.ResponseController, deadlineMu *sync.Mutex, event string, idle time.Duration) error {
+func writeSSEProgress(ctx context.Context, w http.ResponseWriter, rc *http.ResponseController, deadlineMu *sync.Mutex, event []byte, idle time.Duration) error {
 	piece := ssePieceMin
 	for len(event) > 0 {
 		deadlineMu.Lock()
@@ -203,7 +218,7 @@ func writeSSEProgress(ctx context.Context, w http.ResponseWriter, rc *http.Respo
 		}
 		part := event[:min(len(event), piece)]
 		start := time.Now()
-		n, err := io.WriteString(w, part)
+		n, err := w.Write(part)
 		if err != nil {
 			return err
 		}
@@ -243,4 +258,22 @@ func (s *Server) upBodyTimeout(length int) time.Duration {
 		limit = 30 * time.Second
 	}
 	return min(limit, 5*time.Second+time.Duration(length)*time.Second/(16<<10))
+}
+
+// readExactBody reads exactly length bytes and fails if the body is shorter
+// or longer.
+func readExactBody(r io.Reader, length int) ([]byte, error) {
+	body := make([]byte, length)
+	if _, err := io.ReadFull(r, body); err != nil {
+		return nil, err
+	}
+	// Content-Length already equals length, so the body ends here; one
+	// probe read confirms it like the WS reader does.
+	var extra [1]byte
+	if n, err := r.Read(extra[:]); n != 0 {
+		return nil, io.ErrUnexpectedEOF
+	} else if err != nil && err != io.EOF {
+		return nil, err
+	}
+	return body, nil
 }

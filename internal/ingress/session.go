@@ -176,10 +176,10 @@ func (s *ingressSession) stopRecovery(lease *resource.RetentionLease, reason err
 
 // finalAck handles the normal-close race: egress closes the
 // carrier as soon as both FINs are done, which can reach the receive loop
-// before the ACK response that reports down_fin_acked. When only that bit is
-// missing, one more ACK on the same generation (the control channel does not
+// before the ACK response that reports up_fin_applied or down_fin_acked. When
+// only those bits are missing, one more ACK on the same generation (the control channel does not
 // depend on the closed carrier) settles it; egress answers 200 with
-// down_fin_acked for a normally closed session. Without this the close was
+// up_fin_applied and down_fin_acked for a normally closed session. Without this the close was
 // treated as a carrier failure and cooled the carrier down for new sessions.
 func (s *ingressSession) finalAck(g *generation) (bool, error) {
 	if !s.finAdjacent() {
@@ -197,12 +197,18 @@ func (s *ingressSession) finalAck(g *generation) (bool, error) {
 	return s.upEOF && s.upFINApplied && s.downFIN && s.downFINAcked, nil
 }
 
-// finAdjacent reports the FIN-adjacent state: both FINs applied, only the
-// confirmation of the downstream FIN is missing.
+// finAdjacent reports the FIN-adjacent state: the local client's EOF was read
+// and the downstream FIN arrived, and only egress's confirmations
+// (up_fin_applied and/or down_fin_acked) are missing. Egress closes the
+// carrier as soon as it has applied the upstream FIN and seen the downstream
+// FIN acknowledged, so either confirmation can still be in flight when the
+// carrier EOF reaches the receive loop; treating that as a carrier failure
+// cooled the carrier down and stalled the next new session for
+// failover.cooldown.
 func (s *ingressSession) finAdjacent() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.upEOF && s.upFINApplied && s.downFIN && !s.downFINAcked
+	return s.upEOF && s.downFIN && !(s.upFINApplied && s.downFINAcked)
 }
 
 // finalAckTimeout bounds the extra ACK of finalAck.

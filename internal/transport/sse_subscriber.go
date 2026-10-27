@@ -27,6 +27,7 @@ type SSESubscriber struct {
 	releaseRequest          func()
 	failTimeout             time.Duration
 	pendingLF               bool // previous line ended in CR; skip one LF
+	lineHint                int  // capacity for the next buffered line (a declared frame line)
 }
 type SSEEvent struct {
 	Event, ID, Data string

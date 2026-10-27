@@ -64,7 +64,7 @@ func TestSSEWriteIdleProgress(t *testing.T) {
 				slow.Store(true)
 				w.Header().Set("Content-Type", "text/event-stream")
 				var mu sync.Mutex
-				done <- writeSSEProgress(context.Background(), w, http.NewResponseController(w), &mu, event, 80*time.Millisecond)
+				done <- writeSSEProgress(context.Background(), w, http.NewResponseController(w), &mu, []byte(event), 80*time.Millisecond)
 			}))
 			ts.Listener = &sseSlowListener{ts.Listener, &slow}
 			if h2 {

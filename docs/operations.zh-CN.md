@@ -348,6 +348,15 @@ Egress 自己结束会话时，还会在该会话的载体上把终态码作为�
 
 **内存。** 最坏情况下受 `global_buffer_limit`（负载）+ `codec_buffer_limit` + `metadata_limit` 限制，默认共 320 MiB，另加运行时开销。每个会话每个方向的 `buffer_per_direction`（4 MiB）是上限，而不是预先占用。
 
+**GC 软上限（`GOMEMLIMIT`）。** DBBridge 不自动设置：上面的预算已经限定了存活缓冲区，而软上限设得过低时 Go GC 会持续运行而不是报错。在有硬内存限制的容器或 cgroup 中，把 `GOMEMLIMIT` 设为上面的总和再加约 64 MiB（且低于硬限制），让 GC 在内核杀进程之前先收紧，例如通过 `systemctl edit dbbridge`：
+
+```
+[Service]
+Environment=GOMEMLIMIT=400MiB
+```
+
+它是运行时变量，因此不能写进 `install --env-file` 凭据快照。
+
 **新建会话速率。** 会话创建是幂等的：Egress 为每个建连请求 ID 保留一条记录，为每个已关闭会话保留一条墓碑，保留 `idempotency_tombstone_ttl`（至少 10 分钟）。这些记录存放在元数据预算的一个份额中：
 
 ```

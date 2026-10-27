@@ -133,6 +133,42 @@ func (b *ByteWindow) ReadRange(off uint64, max int) ([]byte, uint64, bool) {
 	return out, off, b.hasFinal && off == b.finalOffset
 }
 
+// Segments returns up to limit bytes from off as views of the window's blocks,
+// without copying. Blocks are immutable once appended (Append copies,
+// AppendOwned adopts a buffer its caller no longer touches) and Acknowledge
+// or Reset only drop references, so the views stay valid after the lock is
+// released and after the range is acknowledged; the caller must not modify
+// them. ok is false when off is outside the window.
+func (b *ByteWindow) Segments(off uint64, limit int) (segs [][]byte, next uint64, ok bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	end := b.startOffset + uint64(b.size)
+	if off < b.startOffset || off > end {
+		return nil, end, false
+	}
+	if limit < 0 {
+		limit = 0
+	}
+	n := int(min(end-off, uint64(limit)))
+	for _, v := range b.blocks {
+		if n == 0 {
+			break
+		}
+		blockEnd := v.start + uint64(len(v.data))
+		if blockEnd <= off {
+			continue
+		}
+		seg := v.data[off-v.start:]
+		if len(seg) > n {
+			seg = seg[:n]
+		}
+		segs = append(segs, seg)
+		n -= len(seg)
+		off += uint64(len(seg))
+	}
+	return segs, off, true
+}
+
 // Reset releases every buffered byte and clears the FIN marker. The
 // window stays positioned at its previous end offset, so a reused window keeps
 // accepting appends at the next contiguous offset.

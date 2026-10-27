@@ -148,6 +148,27 @@ func (s *Session) ReadDownRange(off uint64, max int) ([]byte, uint64, bool) {
 	return nil, off, s.DownFIN.Seen && off == s.DownFIN.FinalOffset
 }
 
+// ReadDownSegments is ReadDownRange without the copy: it returns the frame at
+// off as read-only views of the downstream window (see ByteWindow.Segments)
+// and its length. The views remain valid after the frame is acknowledged.
+func (s *Session) ReadDownSegments(off uint64, max int) (segs [][]byte, n int, next uint64, eof bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.State == StateClosed {
+		return nil, 0, off, false
+	}
+	for _, f := range s.downFrames {
+		if f.start == off {
+			if f.end-f.start > uint64(max) || max <= 0 {
+				return nil, 0, off, false
+			}
+			segs, next, _ = s.downBuffer.Segments(off, int(f.end-f.start))
+			return segs, int(next - off), next, s.DownFIN.Seen && next == s.DownFIN.FinalOffset
+		}
+	}
+	return nil, 0, off, s.DownFIN.Seen && off == s.DownFIN.FinalOffset
+}
+
 func (s *Session) downBoundaryLocked(off uint64) bool {
 	if off == s.downAckOffset {
 		return true
@@ -259,6 +280,17 @@ func (s *Session) ReserveDownRead(n int64) bool {
 		r.UpdateSuspended()
 	}
 	return true
+}
+
+// WatchDownReserve returns channels that close when the global payload budget
+// ReserveDownRead draws on frees units (see Registry.WatchGlobalBuffer).
+// Register before re-trying ReserveDownRead. ok is false when no budget can
+// notify and the caller must poll.
+func (s *Session) WatchDownReserve() (ch, pch <-chan struct{}, stop func(), ok bool) {
+	s.mu.Lock()
+	r := s.registry
+	s.mu.Unlock()
+	return r.WatchGlobalBuffer()
 }
 
 // FinishDownRead consumes the reservation even on failure. No copy or second

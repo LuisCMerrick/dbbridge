@@ -125,6 +125,32 @@ func (w WebSocketResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 }
 
 func WriteWSMessage(c *websocket.Conn, typ int, b []byte, idle time.Duration) error {
+	if err := armWSWrite(c, idle); err != nil {
+		return err
+	}
+	return c.WriteMessage(typ, b)
+}
+
+// writeWSParts writes parts as one WebSocket message, with the deadline
+// handling of WriteWSMessage.
+func writeWSParts(c *websocket.Conn, typ int, idle time.Duration, parts ...[]byte) error {
+	if err := armWSWrite(c, idle); err != nil {
+		return err
+	}
+	w, err := c.NextWriter(typ)
+	if err != nil {
+		return err
+	}
+	for _, p := range parts {
+		if _, err = w.Write(p); err != nil {
+			w.Close()
+			return err
+		}
+	}
+	return w.Close()
+}
+
+func armWSWrite(c *websocket.Conn, idle time.Duration) error {
 	if conn := idleWriter(c.UnderlyingConn()); conn != nil {
 		conn.SetWriteIdle(idle)
 		// IdleWriteConn supplies the rolling deadline. Operation cancellation
@@ -137,5 +163,5 @@ func WriteWSMessage(c *websocket.Conn, typ int, b []byte, idle time.Duration) er
 			return err
 		}
 	}
-	return c.WriteMessage(typ, b)
+	return nil
 }
