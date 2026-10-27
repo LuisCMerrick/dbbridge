@@ -4,6 +4,17 @@
 
 The version of a build is set when it is built (`dbbridge version`).
 
+## [1.4.26.10.27.3] - 2026-10-27
+
+Protocol 1.4, wire compatible with every 1.4.26.10.x node. Ingress only. Faster failover when a path goes mute.
+
+- **A silently dropped path is left in about two probe times instead of 10-14 s.** With two endpoints and a firewall DROP on the primary (RTT 84 ms, `protocol: http-sse` or `auto`), the first new session after the cut took 10.8 s (it waited out `control_request_timeout` on the mute HTTP/2 connection the cached probe pointed at) and now takes 1.6-1.8 s; an established session that had a request in flight took 13.7 s to recover and now takes 2.9 s.
+  - A create built on a cached probe answer that has not answered after 2 x the endpoint's last probe time (at least 0.5 s) is guarded by a probe (guard timeout 4 x the last probe time, 1 s minimum, at most `healthcheck_timeout`). No answer: the create is abandoned and the session continues on the next endpoint.
+  - Path watch: any request that waits longer than the guard timeout for its response headers triggers the same check (one at a time per endpoint).
+  - A failed check closes the endpoint's connections that received nothing during it, so all requests still waiting on them fail at once and recovery moves the sessions; when another endpoint is usable the address also enters `failover.cooldown`. Log: `peer endpoint not answering; closed its stalled connections`. An HTTP error answer counts as a working path.
+- **SSE subscriptions share one connection.** SSE shards (`h2_pool_size`) used to be opened round-robin, so the first sessions on an endpoint (at start and right after a failover) each paid a new TCP+TLS handshake (+2 RTT). A new shard now opens only when every shard carries 8 concurrent subscriptions.
+- **Tests.** `TestNewSessionFailsOverFromBlackholedPrimary` (http-sse, auto), `TestEstablishedSessionLeavesBlackholedPrimary`, `TestPathWatchAndCloseStalled`, `TestSSEShardsCreatedOnDemand` (rewritten).
+
 ## [1.4.26.10.27.2] - 2026-10-27
 
 Protocol 1.4, wire compatible with 1.4.26.10.25 and 1.4.26.10.27 nodes in any mix; the new behavior is negotiated by a response header. Connection setup latency.

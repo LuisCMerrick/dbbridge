@@ -62,9 +62,31 @@ func (s *ingressSession) create(ctx context.Context, strategy string) (c *transp
 			rec.GraceMs = s.grace.Milliseconds()
 		}
 		requested = time.Now()
-		resp, err = c.CreateSession(ctx, s.l.Target, lim, crID, rec, s.owner, mode)
+		var guardFailed bool
+		if sel.cachedProbe {
+			resp, err, guardFailed = m.guardedCreate(ctx, s, c, lim, crID, rec, mode)
+		} else {
+			resp, err = c.CreateSession(ctx, s.l.Target, lim, crID, rec, s.owner, mode)
+		}
 		if err == nil {
 			break
+		}
+		if guardFailed {
+			// The live probe of this endpoint failed while the create was
+			// still waiting: the path is down (e.g. a black-holed h2
+			// connection). Go to the next candidate now instead of waiting
+			// out control_request_timeout; the create, if it arrived at all,
+			// is reaped by the owner's unattached timeout.
+			// pathCheck already dropped the cached answer, closed the mute
+			// connections and, with another endpoint configured, cooled
+			// this address down.
+			attempted[ep.ID] = true
+			if ownerFromSel {
+				s.mu.Lock()
+				s.owner = ""
+				s.mu.Unlock()
+			}
+			continue
 		}
 		var remote *transport.RemoteError
 		if sel.cachedProbe {
@@ -124,4 +146,75 @@ func (s *ingressSession) create(ctx context.Context, strategy string) (c *transp
 		return nil, nil, "", false
 	}
 	return c, ep, mode, true
+}
+
+// guardedCreate runs a create whose selection reused a health-loop probe
+// answer. When the create has not answered after guardDelay, the skipped
+// probe is run alongside it (singleflight, bounded by guardTimeout, see
+// pathCheck): it costs no latency when the path is fine,
+// and when the path died since the cached answer (the connection the create
+// rides is black-holed, so the create would only fail after
+// control_request_timeout) the failed check cancels the create and
+// guardFailed reports it.
+func (m *IngressManager) guardedCreate(ctx context.Context, s *ingressSession, c *transport.TripleTransportClient, lim protocol.SessionLimits, crID string, rec protocol.RecoveryNegotiation, mode string) (resp *protocol.CreateSessionResponse, err error, guardFailed bool) {
+	cctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	type result struct {
+		resp *protocol.CreateSessionResponse
+		err  error
+	}
+	done := make(chan result, 1)
+	go func() {
+		r, e := c.CreateSession(cctx, s.l.Target, lim, crID, rec, s.owner, mode)
+		done <- result{r, e}
+	}()
+	guard := make(chan error, 1)
+	// A create normally answers within about one probe time; the check
+	// starts only when it has not, so a healthy path costs no extra probe
+	// (and over HTTP/1.1 no extra connection racing the create for the idle
+	// one).
+	wait := time.NewTimer(m.guardDelay(s.p.ID, c, s.p.ExpectedNodeID))
+	defer wait.Stop()
+	go func() {
+		select {
+		case <-wait.C:
+		case <-cctx.Done():
+			guard <- nil
+			return
+		}
+		guard <- m.pathCheck(cctx, s.p.ID, c, s.p.ExpectedNodeID)
+	}()
+	for {
+		select {
+		case r := <-done:
+			if r.err != nil && guard != nil {
+				// A failed create may be the guard closing the mute
+				// connection it rode: let the guard's verdict name it.
+				if e := <-guard; e != nil {
+					return nil, fmt.Errorf("create abandoned: endpoint path not answering: %w", e), true
+				}
+			}
+			return r.resp, r.err, false
+		case e := <-guard:
+			guard = nil
+			if e == nil {
+				continue
+			}
+			select {
+			case r := <-done:
+				// The create answered in the meantime; its answer decides.
+				if r.err == nil {
+					return r.resp, nil, false
+				}
+			default:
+			}
+			cancel()
+			r := <-done
+			if r.err == nil {
+				// Lost the race to a successful answer: keep it.
+				return r.resp, nil, false
+			}
+			return nil, fmt.Errorf("create abandoned: endpoint path not answering: %w", e), true
+		}
+	}
 }

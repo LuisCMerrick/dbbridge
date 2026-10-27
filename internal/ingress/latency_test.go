@@ -23,6 +23,9 @@ type delayProxy struct {
 	oneWay time.Duration
 	mu     sync.Mutex
 	last   net.Conn // the most recently accepted client connection
+	// dead black-holes the path: bytes in either direction are dropped and
+	// new connections are accepted but never connected through.
+	dead atomic.Bool
 }
 
 func (p *delayProxy) serve() {
@@ -37,6 +40,10 @@ func (p *delayProxy) serve() {
 		go func() {
 			// connect: SYN/SYN-ACK costs one RTT before the client may send.
 			time.Sleep(2 * p.oneWay)
+			if p.dead.Load() {
+				io.Copy(io.Discard, c)
+				return
+			}
 			u, err := net.Dial("tcp", p.target)
 			if err != nil {
 				c.Close()
@@ -73,6 +80,9 @@ func (p *delayProxy) pipe(dst, src net.Conn) {
 	buf := make([]byte, 64<<10)
 	for {
 		n, err := src.Read(buf)
+		if n > 0 && p.dead.Load() {
+			continue
+		}
 		if n > 0 {
 			q <- chunk{time.Now().Add(p.oneWay), append([]byte(nil), buf[:n]...)}
 		}

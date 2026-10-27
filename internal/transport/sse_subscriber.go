@@ -89,7 +89,9 @@ func (c *TripleTransportClient) SubscribeEvents(ctx context.Context, sid, token,
 	if inst != "" {
 		r.Header.Set(protocol.HeaderInstanceID, inst)
 	}
-	resp, e := c.nextSSEShard().Do(r)
+	shard, shardDone := c.nextSSEShard()
+	release = func(base func()) func() { return func() { shardDone(); base() } }(release)
+	resp, e := c.do(shard, r)
 	if e != nil {
 		return nil, localBudgetError(ctx, e, wait)
 	}

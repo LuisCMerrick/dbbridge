@@ -21,12 +21,14 @@ type probeCall struct {
 	done   chan struct{}
 	result *protocol.ProbeResponse
 	err    error
+	rtt    time.Duration // how long the endpoint took to answer
 }
 
 // probeCacheEntry is the latest successful probe answer of one endpoint.
 type probeCacheEntry struct {
-	pr *protocol.ProbeResponse
-	at time.Time
+	pr  *protocol.ProbeResponse
+	at  time.Time
+	rtt time.Duration
 }
 
 // probeReuseMax caps how old a probe answer a new session may build on.
@@ -63,6 +65,36 @@ func (m *IngressManager) cachedProbe(peer string, c *transport.TripleTransportCl
 	}
 	return e.pr
 }
+
+// guardTimeout bounds how long a create built on a cached probe answer
+// waits for its guard probe: a few times the time the endpoint last took to
+// answer a probe, at least guardMin, at most the probe timeout.
+func (m *IngressManager) guardTimeout(peer string, c *transport.TripleTransportClient, node string) time.Duration {
+	limit := m.probeTimeout(peer)
+	m.preMu.Lock()
+	rtt := m.probeCache[probeKey(peer, c, node)].rtt
+	m.preMu.Unlock()
+	if rtt <= 0 {
+		return limit
+	}
+	return min(limit, max(guardMin, guardFactor*rtt))
+}
+
+// guardDelay is how long a create built on a cached probe answer runs before
+// its guard probe starts: twice the endpoint's last probe time, at least
+// guardDelayMin, at most guardTimeout.
+func (m *IngressManager) guardDelay(peer string, c *transport.TripleTransportClient, node string) time.Duration {
+	m.preMu.Lock()
+	rtt := m.probeCache[probeKey(peer, c, node)].rtt
+	m.preMu.Unlock()
+	return min(m.guardTimeout(peer, c, node), max(guardDelayMin, 2*rtt))
+}
+
+const (
+	guardDelayMin = 500 * time.Millisecond
+	guardMin      = time.Second
+	guardFactor   = 4
+)
 
 // invalidateProbe drops the cached answer, so the next selection probes.
 func (m *IngressManager) invalidateProbe(peer string, c *transport.TripleTransportClient, node string) {
@@ -116,7 +148,7 @@ func (m *IngressManager) runProbe(key string, call *probeCall, peer string, c *t
 		delete(m.probeFlights, key)
 		switch {
 		case call.err == nil && call.result != nil:
-			m.probeCache[key] = probeCacheEntry{call.result, time.Now()}
+			m.probeCache[key] = probeCacheEntry{call.result, time.Now(), call.rtt}
 		case call.err != nil && !errors.Is(call.err, errLocalBusy) && !localResourceError(call.err):
 			delete(m.probeCache, key)
 		}
@@ -138,6 +170,7 @@ func (m *IngressManager) runProbe(key string, call *probeCall, peer string, c *t
 	pctx, cancel := context.WithTimeout(m.ctx, timeout)
 	defer cancel()
 	call.result, call.err = c.Probe(pctx, node, generateID(16))
+	call.rtt = time.Since(start)
 	if m.ctx.Err() != nil {
 		if call.err != nil {
 			// Shutting down: says nothing about the endpoint.

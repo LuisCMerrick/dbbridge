@@ -4,6 +4,17 @@
 
 构建的版本号在构建时确定（`dbbridge version`）。
 
+## [1.4.26.10.27.3] - 2026-10-27
+
+协议 1.4，与所有 1.4.26.10.x 节点线上兼容。仅改动 Ingress。路径静默断开时更快切换。
+
+- **静默丢包的路径约在两次探测时长内切走，而不是 10–14 s。** 两个 endpoint、主路径防火墙 DROP（RTT 84 ms，`protocol: http-sse` 或 `auto`）：断路后第一个新会话原来要 10.8 s（缓存的探测结果把它带到已经静默的 HTTP/2 连接上，等满 `control_request_timeout`），现在 1.6–1.8 s；已建立且有请求在途的会话原来 13.7 s 才恢复，现在 2.9 s。
+  - 基于缓存探测结果的 create，若在该 endpoint 最近探测耗时的 2 倍（至少 0.5 s）内没有应答，就并行探测守护（守护超时为最近探测耗时的 4 倍，至少 1 s，至多 `healthcheck_timeout`）。没有应答则放弃这次 create，会话改用下一个 endpoint。
+  - 路径看门狗：任何请求等待响应头超过守护超时都会触发同样的检查（每个 endpoint 同时只有一个）。
+  - 检查失败时关闭该 endpoint 在检查期间没有收到任何数据的连接，所有还在等待的请求立即失败，由恢复机制迁走会话；有其他可用 endpoint 时该地址同时进入 `failover.cooldown`。日志：`peer endpoint not answering; closed its stalled connections`。HTTP 错误应答视为路径正常。
+- **SSE 订阅共用一条连接。** 原来 SSE 分片（`h2_pool_size`）轮询创建，endpoint 上最初几个会话（启动时、刚切换后）各自要多一次 TCP+TLS 握手（+2 RTT）。现在只有每个分片都已承载 8 个并发订阅时才新开分片。
+- **测试。** `TestNewSessionFailsOverFromBlackholedPrimary`（http-sse、auto）、`TestEstablishedSessionLeavesBlackholedPrimary`、`TestPathWatchAndCloseStalled`、`TestSSEShardsCreatedOnDemand`（重写）。
+
 ## [1.4.26.10.27.2] - 2026-10-27
 
 协议 1.4，与 1.4.26.10.25 / 1.4.26.10.27 节点线上兼容（新旧节点可任意混用，新增行为靠响应头协商）。新连接首包延迟优化。

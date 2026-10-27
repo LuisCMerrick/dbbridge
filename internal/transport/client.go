@@ -19,12 +19,13 @@ type clientShared struct {
 	provider                            func() string
 	dataConnections, controlConnections *resource.Budget
 	resourcesSet                        bool
+	watch                               *PathWatch
 }
 type TripleTransportClient struct {
 	resources                            *resource.Manager
 	sseClient, dataClient, controlClient *http.Client
 	sseShards                            []*http.Client
-	sseNext                              uint64
+	sseLoad                              []int // active subscriptions per shard, guarded by mu
 	mu                                   sync.Mutex
 	peerURL, instanceID, expectedNodeID  string
 	tCfg                                 *config.TransportConfig
@@ -34,6 +35,7 @@ type TripleTransportClient struct {
 	bindings                             sync.Map
 	wsSpare                              wsSpareState // guarded by mu
 	wsSpareClosed                        bool         // guarded by mu
+	conns                                sync.Map     // *trackedConn: live connections to this endpoint
 }
 
 func NewTripleTransportClientForURL(url, token string, cfg *config.TransportConfig, inst string, verify bool) *TripleTransportClient {

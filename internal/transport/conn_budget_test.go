@@ -157,7 +157,7 @@ func TestCancelledRequestIsNotLocalBudgetError(t *testing.T) {
 func TestPeerPoolsDropIdleConnectionsBeforeServersAndProxies(t *testing.T) {
 	c := NewTripleTransportClientForURL("http://127.0.0.1:1", "token", testCfg(), "ai", true)
 	defer c.Close()
-	clients := append([]*http.Client{c.dataClient, c.controlClient}, c.nextSSEShard())
+	clients := append([]*http.Client{c.dataClient, c.controlClient}, firstShard(c))
 	for _, cl := range clients {
 		if d := cl.Transport.(*http.Transport).IdleConnTimeout; d <= 0 || d >= 60*time.Second {
 			t.Fatalf("IdleConnTimeout %s, want below 60s", d)

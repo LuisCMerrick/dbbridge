@@ -43,6 +43,7 @@ type IngressManager struct {
 	cleanupCancel    context.CancelFunc
 	probeFlights     map[string]*probeCall
 	probeCache       map[string]probeCacheEntry
+	pathChecks       map[string]bool
 	precheckUsed     map[string]time.Time
 	probeSlots       map[string]chan struct{}
 	preMu            sync.Mutex
@@ -62,6 +63,7 @@ func NewIngressManager(c *config.Config, a *auth.Authenticator) *IngressManager 
 	m.cleanupCtx, m.cleanupCancel = context.WithCancel(context.Background())
 	m.probeFlights = map[string]*probeCall{}
 	m.probeCache = map[string]probeCacheEntry{}
+	m.pathChecks = map[string]bool{}
 	m.precheckUsed = map[string]time.Time{}
 	for _, p := range c.Peers {
 		id := p.ID
@@ -70,6 +72,11 @@ func NewIngressManager(c *config.Config, a *auth.Authenticator) *IngressManager 
 		if a != nil {
 			cl.SetTokenProvider(func() string { return a.GetOutboundToken(id) })
 		}
+		node := p.ExpectedNodeID
+		cl.SetPathWatch(&transport.PathWatch{
+			Delay: func(c *transport.TripleTransportClient) time.Duration { return m.guardTimeout(id, c, node) },
+			Slow:  func(c *transport.TripleTransportClient) { m.watchSlow(id, c, node) },
+		})
 		m.clients[id] = cl
 		m.linkManagers[id] = link.NewPeerLinkManager(p)
 		n := p.Failover.MaxConcurrentProbes
