@@ -294,7 +294,7 @@ func TestSSEAdaptivePieces(t *testing.T) {
 	w := &flushCounter{ResponseRecorder: httptest.NewRecorder()}
 	var mu sync.Mutex
 	event := "event: data\ndata: " + strings.Repeat("x", 1<<20) + "\n\n"
-	if e := writeSSEProgress(context.Background(), w, http.NewResponseController(w), &mu, event, time.Minute); e != nil {
+	if e := writeSSEProgress(context.Background(), w, http.NewResponseController(w), &mu, []byte(event), time.Minute); e != nil {
 		t.Fatal(e)
 	}
 	if w.flushes > 64 {

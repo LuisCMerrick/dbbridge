@@ -328,6 +328,15 @@ When the egress ends a session itself, it also sends the terminal code on the se
 
 **Memory.** The worst case is bounded by `global_buffer_limit` (payload) + `codec_buffer_limit` + `metadata_limit`, 320 MiB with defaults, plus runtime overhead. Per session, `buffer_per_direction` (4 MiB) in each direction is the ceiling, not a reservation.
 
+**GC soft limit (`GOMEMLIMIT`).** DBBridge does not set one: the budgets above already bound live buffers, and a soft limit set too low makes the Go GC run continuously instead of failing. Under a hard container or cgroup memory limit, set `GOMEMLIMIT` to the sum above plus about 64 MiB (and below the hard limit) so the GC tightens before the kernel kills the process, for example with `systemctl edit dbbridge`:
+
+```
+[Service]
+Environment=GOMEMLIMIT=400MiB
+```
+
+It is a runtime variable, so it is not accepted in the `install --env-file` credential snapshot.
+
 **Rate of new sessions.** Session creation is idempotent: the egress keeps a record of every create request ID, and a tombstone for every closed session, for `idempotency_tombstone_ttl` (at least 10 minutes). These records live in a share of the metadata budget:
 
 ```

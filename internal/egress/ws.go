@@ -2,7 +2,6 @@ package egress
 
 import (
 	"context"
-	"crypto/sha256"
 	"dbbridge/internal/auth"
 	"dbbridge/internal/protocol"
 	"dbbridge/internal/session"
@@ -186,7 +185,8 @@ func (s *Server) runWSSession(c *websocket.Conn, sess *session.Session, ep uint6
 		defer close(writerDone)
 		_ = s.streamWriter(ctx, sess, ep, stream, func(kind string, data []byte, v any, end uint64) error {
 			if kind == "data" {
-				frame, err := protocol.EncodeWSFrameChecked(ep, end-uint64(len(data)), data)
+				f := v.(downFrame)
+				frame, err := protocol.EncodeWSFrameSegments(ep, f.offset, f.segs)
 				if err != nil {
 					return err
 				}
@@ -286,11 +286,14 @@ func (s *Server) runWSSession(c *websocket.Conn, sess *session.Session, ep uint6
 			sess.CloseStream(ep, stream)
 			return
 		}
-		sum := sha256.Sum256(data)
+		// DecodeWSFrame has verified the header digest against the payload;
+		// the session takes it as is instead of hashing the frame again, and
+		// adopts the freshly allocated message buffer instead of copying it.
+		sha := hex.EncodeToString(b[24:56])
 		until := time.Now().Add(stall)
 		for {
 			var consumed bool
-			_, _, _, consumed, e = sess.IngestUpFrameReserved(ep, off, len(data), hex.EncodeToString(sum[:]), data)
+			_, _, _, consumed, e = sess.IngestUpFrameOwned(ep, off, sha, data, true)
 			if consumed {
 				releasePayload = nil
 			}

@@ -147,6 +147,17 @@ func (b *Budget) Take(ctx context.Context, n int64) error {
 	}
 }
 
+// Watch registers the caller as a waiter, like a parked Take, and returns
+// channels that close on the next release or limit change of this budget or
+// of its parent. A caller that registers before re-trying its acquisition
+// cannot miss the release that would let it through. stop must be called
+// exactly once when the caller stops waiting.
+func (b *Budget) Watch() (ch, pch <-chan struct{}, stop func()) {
+	ch, pch = b.register()
+	var once sync.Once
+	return ch, pch, func() { once.Do(b.unregister) }
+}
+
 func (b *Budget) register() (ch, pch <-chan struct{}) {
 	b.mu.Lock()
 	ch = b.changed

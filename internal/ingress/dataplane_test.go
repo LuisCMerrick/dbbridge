@@ -28,7 +28,7 @@ type testHook func(w http.ResponseWriter, r *http.Request, base http.Handler) bo
 
 // dataplaneSetup is testSetup with an egress tweak, an HTTP hook and DELETE
 // counting (adapted from the pass-2 data-plane fixture).
-func dataplaneSetup(t *testing.T, mode string, dial bool, tweak, btweak func(*config.Config), hook testHook) (*testEnv, *atomic.Int64) {
+func dataplaneSetup(t testing.TB, mode string, dial bool, tweak, btweak func(*config.Config), hook testHook) (*testEnv, *atomic.Int64) {
 	t.Helper()
 	e := &testEnv{}
 	deletes := &atomic.Int64{}

@@ -8,6 +8,13 @@ import (
 	"time"
 )
 
+// reservePoll is the retry period of a reader blocked on a payload budget
+// that cannot notify; reserveSafetyPoll backs up the release notification.
+const (
+	reservePoll       = 10 * time.Millisecond
+	reserveSafetyPoll = 250 * time.Millisecond
+)
+
 func (s *Server) runBackendReader(sess *session.Session, notify chan struct{}) {
 	stall := s.cfg.Transport.BackpressureTimeout
 	if stall <= 0 {
@@ -24,8 +31,10 @@ func (s *Server) runBackendReader(sess *session.Session, notify chan struct{}) {
 	}
 	base = min(base, maxFrame)
 	size := base
-	// One reusable retry ticker per reader instead of a time.After timer
-	// allocation every 10 ms while the payload budget is exhausted.
+	// A reader blocked on the global payload budget parks on that budget's
+	// release notification instead of polling. The ticker is a slow safety
+	// net (and the only wake-up when no budget can notify); it is created
+	// once per reader, not per wait.
 	var retry *time.Ticker
 	defer func() {
 		if retry != nil {
@@ -38,16 +47,27 @@ func (s *Server) runBackendReader(sess *session.Session, notify chan struct{}) {
 		}
 		until := time.NewTimer(stall)
 		defer until.Stop()
-		if retry == nil {
-			retry = time.NewTicker(10 * time.Millisecond)
-		} else {
-			retry.Reset(10 * time.Millisecond)
-		}
-		for !sess.ReserveDownRead(n) {
+		for {
+			ch, pch, stopWatch, notifies := sess.WatchDownReserve()
+			if sess.ReserveDownRead(n) {
+				stopWatch()
+				return true
+			}
+			period := reserveSafetyPoll
+			if !notifies {
+				period = reservePoll
+			}
+			if retry == nil {
+				retry = time.NewTicker(period)
+			} else {
+				retry.Reset(period)
+			}
 			select {
 			case <-sess.Done():
+				stopWatch()
 				return false
 			case <-until.C:
+				stopWatch()
 				// A suspended or resuming session is bounded by the
 				// recovery grace and Retention, not by backpressure: re-arm
 				// instead of killing it before the grace ends.
@@ -57,10 +77,12 @@ func (s *Server) runBackendReader(sess *session.Session, notify chan struct{}) {
 				}
 				sess.CloseWithReason(protocol.ErrBufferExhausted)
 				return false
+			case <-ch:
+			case <-pch:
 			case <-retry.C:
 			}
+			stopWatch()
 		}
-		return true
 	}
 	for {
 		if !sess.WaitDownCapacity(int64(size)) {

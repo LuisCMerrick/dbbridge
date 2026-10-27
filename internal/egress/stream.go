@@ -17,6 +17,14 @@ func (s *Server) control(sess *session.Session, ep uint64, stream, kind string) 
 	return protocol.WSTextControlMessage{Type: kind, SessionID: sess.ID, InstanceID: sess.InstanceID, Epoch: strconv.FormatUint(ep, 10), StreamID: stream}
 }
 
+// downFrame is one downstream DATA frame handed to a transport writer: the
+// payload starting at offset, as read-only views of the session window
+// (Session.ReadDownSegments). The writer encodes it with a single copy.
+type downFrame struct {
+	offset uint64
+	segs   [][]byte
+}
+
 func (s *Server) streamWriter(ctx context.Context, sess *session.Session, ep uint64, stream string, write func(string, []byte, any, uint64) error) error {
 	hb := s.cfg.Transport.Heartbeat
 	if hb <= 0 {
@@ -104,12 +112,12 @@ schedule:
 				if size > 0 && !codec.Try(cost) {
 					break
 				}
-				data, end, eof := sess.ReadDownRange(offset, size)
-				if len(data) > 0 {
+				segs, n, end, eof := sess.ReadDownSegments(offset, size)
+				if n > 0 {
 					e := sess.BeginEmit(ep, offset, end)
 					if e == nil {
 						sess.SetTransportWriting(ep, stream, true)
-						e = write("data", data, nil, end)
+						e = write("data", nil, downFrame{offset: offset, segs: segs}, end)
 						sess.SetTransportWriting(ep, stream, false)
 					}
 					sess.FinishEmit(ep, end, e)
@@ -119,7 +127,7 @@ schedule:
 					}
 					offset = end
 				}
-				if size > 0 && len(data) == 0 {
+				if size > 0 && n == 0 {
 					codec.Put(cost)
 				}
 				if eof && !finSent {
@@ -135,7 +143,7 @@ schedule:
 					}
 					finSent = true
 				}
-				if len(data) == 0 {
+				if n == 0 {
 					break
 				}
 			}

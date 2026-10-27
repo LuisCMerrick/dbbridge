@@ -32,11 +32,14 @@ func (w *WSSessionConn) WriteBinaryFrame(epoch uint64, offset uint64, payload []
 	w.writeMu.Lock()
 	defer w.writeMu.Unlock()
 
-	frame, err := protocol.EncodeWSFrameChecked(epoch, offset, payload)
+	header, err := protocol.EncodeWSFrameHeader(epoch, offset, payload)
 	if err != nil {
 		return err
 	}
-	return WriteWSMessage(w.conn, websocket.BinaryMessage, frame, w.writeIdle)
+	// This is the dialing (client) side, where gorilla masks every byte
+	// into its own write buffer anyway: stream header and payload through
+	// one message writer instead of first joining them in a new frame.
+	return writeWSParts(w.conn, websocket.BinaryMessage, w.writeIdle, header[:], payload)
 }
 
 // WriteTextMessage safely writes a JSON or text control message.

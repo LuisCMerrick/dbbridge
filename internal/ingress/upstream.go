@@ -18,6 +18,12 @@ type retainedChunk struct {
 	cost   int64
 	refs   int
 	acked  bool
+	// pooled marks data as a recycled read buffer (getFrameBuf) that goes
+	// back to the pool when the chunk is released. tainted clears it for
+	// good once an HTTP send of the chunk failed: net/http may still be
+	// reading a failed request's body after the call returned.
+	pooled  bool
+	tainted bool
 }
 
 func (s *ingressSession) advanceUpLocked(off uint64) error {
@@ -68,6 +74,9 @@ func (s *ingressSession) releaseFrameLocked(f *retainedChunk) {
 		s.used -= f.cost
 		s.retainedBytes.Add(-f.cost)
 		f.cost = 0
+	}
+	if f.pooled && !f.tainted && f.data != nil {
+		putFrameBuf(f.data)
 	}
 	f.data = nil
 }
@@ -138,7 +147,7 @@ func (s *ingressSession) readLocal() {
 		}
 		// The payload budget is reserved before the read (backpressure), but
 		// only bytes actually read count toward the recovery lease.
-		buf := make([]byte, maxFrame)
+		buf := getFrameBuf(maxFrame)
 		n, e := s.conn.Read(buf)
 		capacity := maxFrame
 		s.mu.Lock()
@@ -146,6 +155,7 @@ func (s *ingressSession) readLocal() {
 			if s.upNext > math.MaxUint64-uint64(n) {
 				s.mu.Unlock()
 				s.m.cfg.Resources.Payload.Put(int64(maxFrame))
+				putFrameBuf(buf)
 				s.fault(nil, observability.FaultUpstream, transport.ErrProtocol, true)
 				return
 			}
@@ -159,14 +169,16 @@ func (s *ingressSession) readLocal() {
 				copy(data, buf[:n])
 				s.m.cfg.Resources.Payload.Put(int64(capacity - n))
 				cost = int64(n)
+				putFrameBuf(buf)
 			}
-			f := &retainedChunk{offset: s.upNext, data: data, cost: cost}
+			f := &retainedChunk{offset: s.upNext, data: data, cost: cost, pooled: n*4 > capacity}
 			s.frames = append(s.frames, f)
 			s.used += f.cost
 			s.retainedBytes.Add(f.cost)
 			s.upNext += uint64(n)
 		} else {
 			s.m.cfg.Resources.Payload.Put(int64(maxFrame))
+			putFrameBuf(buf)
 		}
 		if e == io.EOF {
 			s.upEOF = true
@@ -263,6 +275,11 @@ func (s *ingressSession) send(g *generation) {
 					}
 					for attempt := 0; g.ctx.Err() == nil; attempt++ {
 						r, e := g.c.SendUpFrame(g.ctx, s.sid, s.token, s.owner, g.ep, f.offset, f.data, down, confirmed)
+						if e != nil {
+							s.mu.Lock()
+							f.tainted = true
+							s.mu.Unlock()
+						}
 						if e == nil {
 							off, pe := protocol.Offset(r.AckUpOffset)
 							s.mu.Lock()

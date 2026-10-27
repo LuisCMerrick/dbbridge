@@ -20,17 +20,34 @@ import (
 // accepted: true if enqueued for writing (202)
 // currentAckUp: current stable written boundary
 func (s *Session) IngestUpFrame(epoch uint64, offset uint64, length int, sha string, data []byte) (bool, bool, uint64, error) {
-	written, accepted, ack, _, err := s.ingestUpFrame(epoch, offset, length, sha, data, false)
+	written, accepted, ack, _, err := s.ingestUpFrame(epoch, offset, length, sha, data, false, false)
 	return written, accepted, ack, err
 }
 
 // IngestUpFrameReserved consumes the existing length-byte payload reservation
 // only when a new frame is enqueued. Duplicates and errors leave it to the caller.
 func (s *Session) IngestUpFrameReserved(epoch uint64, offset uint64, length int, sha string, data []byte) (bool, bool, uint64, bool, error) {
-	return s.ingestUpFrame(epoch, offset, length, sha, data, true)
+	return s.ingestUpFrame(epoch, offset, length, sha, data, true, false)
 }
 
-func (s *Session) ingestUpFrame(epoch uint64, offset uint64, length int, sha string, data []byte, reserved bool) (alreadyWritten bool, accepted bool, currentAckUp uint64, consumed bool, err error) {
+// IngestUpFrameOwned is the transport fast path. The caller has already
+// verified that sha is the lowercase hex SHA-256 of data, and hands data
+// over: a frame that is enqueued keeps the buffer instead of a copy, so the
+// caller must not reuse it after the call. Duplicates and errors leave data
+// untouched. reserved has the meaning of IngestUpFrameReserved.
+func (s *Session) IngestUpFrameOwned(epoch uint64, offset uint64, sha string, data []byte, reserved bool) (bool, bool, uint64, bool, error) {
+	return s.ingestUpFrame(epoch, offset, len(data), sha, data, reserved, true)
+}
+
+func (s *Session) ingestUpFrame(epoch uint64, offset uint64, length int, sha string, data []byte, reserved, verified bool) (alreadyWritten bool, accepted bool, currentAckUp uint64, consumed bool, err error) {
+	// The digest is a pure function of data: verify it before taking the
+	// session lock, which ACKs, the backend writer and the downstream path
+	// all contend on.
+	digestOK := verified
+	if !verified && length == len(data) {
+		sum := sha256.Sum256(data)
+		digestOK = hex.EncodeToString(sum[:]) == sha
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -47,8 +64,7 @@ func (s *Session) ingestUpFrame(epoch uint64, offset uint64, length int, sha str
 	if length <= 0 || length != len(data) || offset > math.MaxUint64-uint64(length) {
 		return false, false, s.upAckOffset, false, ErrFrameConflict
 	}
-	sum := sha256.Sum256(data)
-	if hex.EncodeToString(sum[:]) != sha {
+	if !digestOK {
 		return false, false, s.upAckOffset, false, ErrFrameConflict
 	}
 	frameEnd := offset + uint64(length)
@@ -136,9 +152,13 @@ func (s *Session) ingestUpFrame(epoch uint64, offset uint64, length int, sha str
 	if !reserved && s.registry != nil && !s.registry.AcquireGlobalBuffer(int64(length)) {
 		return false, false, s.upAckOffset, false, ErrBufferExhausted
 	}
-	// Enqueue frame copy
-	frameCopy := make([]byte, length)
-	copy(frameCopy, data)
+	// Enqueue the frame: a verified transport buffer is adopted, anything
+	// else is copied because the caller may reuse it.
+	frameCopy := data
+	if !verified {
+		frameCopy = make([]byte, length)
+		copy(frameCopy, data)
+	}
 	s.upPendingFrames[offset] = &InflightUpFrame{
 		Offset: offset,
 		Length: length,

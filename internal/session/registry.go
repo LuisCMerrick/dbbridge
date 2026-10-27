@@ -91,6 +91,17 @@ func (r *Registry) ReleaseGlobalBuffer(bytes int64) {
 	}
 }
 
+// WatchGlobalBuffer is Budget.Watch on the global payload budget. ok is
+// false when the registry has no such budget (the legacy counter has no
+// release notification) and the caller must poll.
+func (r *Registry) WatchGlobalBuffer() (ch, pch <-chan struct{}, stop func(), ok bool) {
+	if r == nil || r.payload == nil {
+		return nil, nil, func() {}, false
+	}
+	ch, pch, stop = r.payload.Watch()
+	return ch, pch, stop, true
+}
+
 func (r *Registry) CurrentGlobalBuffer() int64 {
 	if r.payload != nil {
 		return r.payload.Used()
