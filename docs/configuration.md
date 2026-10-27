@@ -275,7 +275,7 @@ How each value is used and when to change it is in [Transport](transport.md).
 | `up_max_inflight_frames` | int | `8` | Positive; ≤ `metadata_limit / 192`. |
 | `up_window_bytes` | size | `min(2MiB, buffer_per_direction)` | ≥ `max_frame_size`, ≤ `buffer_per_direction`. |
 | `receipt_limit_per_session` | int | `max(64, 2 × up_max_inflight_frames + 8)` | ≥ `2 × up_max_inflight_frames + 8`; ≤ `metadata_limit / 160`. |
-| `h2_pool_size` | int | `4` | 1–64. Number of HTTP client shards per endpoint used for SSE downstream subscriptions; shards are created as subscriptions need them. |
+| `h2_pool_size` | int | `4` | 1–64. Maximum number of HTTP client shards (connections) per endpoint for SSE downstream subscriptions. Subscriptions share one shard; another is opened only when every shard already carries 8 concurrent subscriptions. |
 | `heartbeat` | duration | `15s` | > 0. Carrier keep-alive; also the HTTP/2 PING interval (PING timeout 5 s). |
 | `failure_detect_timeout` | duration | `max(45s, 3 × heartbeat)` | ≥ `3 × heartbeat`. |
 | `recovery.enabled` | bool | `true` | |

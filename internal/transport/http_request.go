@@ -52,7 +52,7 @@ func (c *TripleTransportClient) request(ctx context.Context, client *http.Client
 	for k, v := range header {
 		r.Header[k] = v
 	}
-	resp, e := client.Do(r)
+	resp, e := c.do(client, r)
 	if e != nil {
 		return localBudgetError(ctx, e, wait)
 	}

@@ -275,7 +275,7 @@ DNS 解析出错或超时与 TCP 连接被拒一样，以 `502 DBB_DIAL_FAILED` 
 | `up_max_inflight_frames` | int | `8` | 正数；≤ `metadata_limit / 192`。 |
 | `up_window_bytes` | 尺寸 | `min(2MiB, buffer_per_direction)` | ≥ `max_frame_size`，≤ `buffer_per_direction`。 |
 | `receipt_limit_per_session` | int | `max(64, 2 × up_max_inflight_frames + 8)` | ≥ `2 × up_max_inflight_frames + 8`；≤ `metadata_limit / 160`。 |
-| `h2_pool_size` | int | `4` | 1–64。每个端点用于 SSE 下行订阅的 HTTP 客户端分片数；分片按订阅需要逐个创建。 |
+| `h2_pool_size` | int | `4` | 1–64。每个端点用于 SSE 下行订阅的 HTTP 客户端分片（连接）数上限。订阅共用一个分片，只有当每个分片都已承载 8 个并发订阅时才新开一个。 |
 | `heartbeat` | 时长 | `15s` | > 0。载体保活心跳；也是 HTTP/2 PING 间隔（PING 超时 5 s）。 |
 | `failure_detect_timeout` | 时长 | `max(45s, 3 × heartbeat)` | ≥ `3 × heartbeat`。 |
 | `recovery.enabled` | bool | `true` | |

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -131,13 +132,21 @@ func (c *TripleTransportClient) dial(ctx context.Context, network, address strin
 		release()
 		return nil, err
 	}
-	return resource.LeaseConn(conn, release), nil
+	return c.track(resource.LeaseConn(conn, release)), nil
 }
 
-// nextSSEShard picks the SSE pool shard for the next subscription in round
-// robin. Shards are created one at a time as the rotation first reaches them,
-// up to h2_pool_size (at most config.MaxH2PoolSize).
-func (c *TripleTransportClient) nextSSEShard() *http.Client {
+// sseShardSpread is how many concurrent subscriptions a shard carries
+// before the next one opens another shard. Opening a shard costs a new
+// TCP+TLS connection (two round trips, and on a lossy path the risk of a
+// stalled handshake), so a few sessions share one h2 connection and shards
+// are added only under real concurrency.
+const sseShardSpread = 8
+
+// nextSSEShard picks the SSE pool shard for the next subscription: the
+// least-loaded existing shard, or a new one when every shard already carries
+// sseShardSpread subscriptions, up to h2_pool_size (at most
+// config.MaxH2PoolSize). done must be called when the subscription ends.
+func (c *TripleTransportClient) nextSSEShard() (cl *http.Client, done func()) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	n := c.tCfg.H2PoolSize
@@ -147,13 +156,28 @@ func (c *TripleTransportClient) nextSSEShard() *http.Client {
 	n = min(n, config.MaxH2PoolSize)
 	if len(c.sseShards) == 0 {
 		c.sseShards = append(c.sseShards, c.sseClient)
+		c.sseLoad = append(c.sseLoad, 0)
 	}
-	i := int(c.sseNext % uint64(n))
-	c.sseNext++
-	if i == len(c.sseShards) {
+	i := 0
+	for j := range c.sseLoad {
+		if c.sseLoad[j] < c.sseLoad[i] {
+			i = j
+		}
+	}
+	if c.sseLoad[i] >= sseShardSpread && len(c.sseShards) < n {
 		tr := c.sseClient.Transport.(*http.Transport).Clone()
 		c.bindDial(tr, false)
 		c.sseShards = append(c.sseShards, &http.Client{Transport: tr, CheckRedirect: c.sseClient.CheckRedirect})
+		c.sseLoad = append(c.sseLoad, 0)
+		i = len(c.sseShards) - 1
 	}
-	return c.sseShards[i]
+	c.sseLoad[i]++
+	var once sync.Once
+	return c.sseShards[i], func() {
+		once.Do(func() {
+			c.mu.Lock()
+			c.sseLoad[i]--
+			c.mu.Unlock()
+		})
+	}
 }

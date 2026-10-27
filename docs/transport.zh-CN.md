@@ -44,7 +44,7 @@ Egress 按已认证身份限制 WebSocket 预检：最多 2 个并发，每秒 4
 
 **建立连接的开销。** 对端处于热状态时，一个新的本地连接在第一个字节到达数据库之前需要与 Egress 往返三次：create、载体（WebSocket 升级或 SSE 事件流）以及数据本身。
 
-- 新会话复用最近一次成功的健康检查探测结果（不超过 1.5 × `healthcheck_interval`，且不超过 15 s），不再先探测。如果 Egress 期间重启过，create 会被 `DBB_INSTANCE_MISMATCH` 拒绝，会话随即重新探测；create 的其他失败也会丢弃缓存结果。健康检查在启动时立即执行一次（正向对端；反向对端在一个间隔后才首次探测，此时隧道通常已建立）。
+- 新会话复用最近一次成功的健康检查探测结果（不超过 1.5 × `healthcheck_interval`，且不超过 15 s），不再先探测。如果 Egress 期间重启过，create 会被 `DBB_INSTANCE_MISMATCH` 拒绝，会话随即重新探测；create 的其他失败也会丢弃缓存结果；create 迟迟不应答时会并行探测（见“静默断路”）。健康检查在启动时立即执行一次（正向对端；反向对端在一个间隔后才首次探测，此时隧道通常已建立）。
 - 每次建立 WebSocket 会话后，Ingress 会向该 endpoint 预先建立一条备用连接（TCP 与 TLS），4 s 内的下一个会话直接在它上面发送升级请求。未使用的备用连接 4 s 后关闭且不续建，空闲的对端不会多占连接。使用环境变量代理时不保留备用连接。使用前会检测服务端是否已关闭备用连接；备用连接在收到任何应答前失败时，改用一次全新的拨号。
 - Egress 在 WebSocket 升级和 SSE 事件流的应答中带上 `X-DBB-Implicit-Ready: 1`：新会话的数据面会在第一个标明该流的上行帧或 FIN 到达时激活（只有 `ready` 消息携带流 ID），所以 Ingress 发送数据时不必等待 ready ACK 返回，ACK 仍会立即发出。没有该响应头时（旧版 Egress，或代理丢弃了它），Ingress 照旧等待 ready ACK。恢复中的会话始终等待 ready ACK。
 - 新会话发送数据前不再等待第一个心跳 ping，nonce 由控制通道随后回传。恢复时仍先确认 nonce。
@@ -90,6 +90,8 @@ Egress 按已认证身份限制 WebSocket 预检：最多 2 个并发，每秒 4
 **故障检测。** 双方每隔 `heartbeat` 发送心跳。载体在 `failure_detect_timeout` 内没有任何进展即判定为断开。进展指会话流量（绑定到该会话的事件或 WebSocket 消息，或仍在到达的数据帧）；SSE 注释和解析器忽略的字段（例如代理插入的保活注释）不算进展。使用 HTTP/2 时，节点还会每隔 `heartbeat` 发送 PING，5 s 无应答即关闭连接。
 
 **故障切换。** 每个 peer 的 endpoint 按 `priority` 排序。Ingress 每隔 `failover.healthcheck_interval` 探测一次；连续失败 `unhealthy_threshold` 次后 endpoint 变为 `UNHEALTHY`，连续成功 `healthy_threshold` 次后恢复可用。新会话使用最优的可用 endpoint；优先 endpoint 恢复后，只有新会话会切过去（`failback: new_sessions`）。
+
+**静默断路。** 路径开始静默丢包（防火墙规则、链路中断）时，Ingress 约在两次探测时长内发现，而不是等 `control_request_timeout`。守护超时为该 endpoint 最近一次探测耗时的 4 倍，至少 1 s，至多 `healthcheck_timeout`。基于缓存探测结果的新会话，如果 create 在最近探测耗时的 2 倍（至少 0.5 s）内还没应答，就并行探测该 endpoint；任何发往该 endpoint 的请求等待响应头超过守护超时也会触发同样的检查。探测在守护超时内没有任何应答时（HTTP 错误应答不算，说明路径是通的），Ingress 关闭该 endpoint 在检查期间没有收到任何数据的连接，所有仍在等待的请求立即失败，已建立的会话由恢复机制迁走；有其他可用 endpoint 时该地址还会进入 `failover.cooldown`，新会话直接改用下一个 endpoint。日志为 `peer endpoint not answering; closed its stalled connections`。实测（两个 endpoint，主路径防火墙 DROP，RTT 84 ms）：断路后第一个新会话 10.8 s → 1.6–1.8 s，已建立会话 13.7 s → 2.9 s。
 
 **冷却。** 载体在某个 endpoint 上第一次失败，就让该 endpoint/载体组合冷却 `failover.cooldown`；整条路径失败（例如 TCP 连接被拒）则让该地址冷却。冷却不会因探测成功而缩短。所有候选都在冷却时，Ingress 等待最早结束的那个，但不超过 `create_retry_timeout`（建连）或恢复截止时间（恢复）。纯本地原因永远不会导致冷却：本地建连期限、恢复截止时间、客户端关闭或重置了套接字、节点停机，以及本地预算耗尽。
 
