@@ -29,16 +29,35 @@ type precheckCall struct {
 // precheckCacheTTL is how long a definitive precheck answer is reused.
 const precheckCacheTTL = 30 * time.Second
 
+// precheckStaleMax is how long past its TTL a successful precheck answer is
+// still served while a background check renews it (stale-while-revalidate),
+// so the first session after a quiet spell does not wait for a WS dial. A WS
+// path that broke meanwhile fails that session's Upgrade, which cools the WS
+// carrier and invalidates the answer just as a fresh one would be.
+const precheckStaleMax = 5 * time.Minute
+
 // precheck answers whether WS works on an endpoint, sharing one in-flight
 // check and reusing definitive answers. Only real checks enter the per-
 // endpoint phase statistics: cache hits and local contention do not.
 func (m *IngressManager) precheck(ctx context.Context, peer string, c *transport.TripleTransportClient, node, inst string) error {
 	key := m.precheckKey(peer, c, inst)
 	m.preMu.Lock()
+	m.precheckUsed[key] = time.Now()
 	if v, ok := m.cache[key]; ok && time.Now().Before(v.expires) {
 		m.preMu.Unlock()
 		observability.RecordEvent("ingress", "cache_hit", "success", "ws", "ws")
 		return v.err
+	}
+	if v, ok := m.cache[key]; ok && v.err == nil && time.Now().Before(v.expires.Add(precheckStaleMax)) {
+		if m.prechecks[key] == nil {
+			call := &precheckCall{done: make(chan struct{})}
+			m.prechecks[key] = call
+			m.wg.Add(1)
+			go m.runPrecheck(key, call, peer, c, node, inst)
+		}
+		m.preMu.Unlock()
+		observability.RecordEvent("ingress", "cache_hit", "success", "ws", "ws")
+		return nil
 	}
 	call := m.prechecks[key]
 	if call == nil {
@@ -57,6 +76,33 @@ func (m *IngressManager) precheck(ctx context.Context, peer string, c *transport
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+}
+
+// precheckKeepWarm is how long after its last use a WS precheck answer is
+// renewed in the background by the health loop.
+const precheckKeepWarm = 2 * time.Minute
+
+// refreshPrecheck renews a successful WS precheck answer that would expire
+// before the next health check, while WS is in recent use on the endpoint,
+// so new sessions never wait for a precheck dial. It never blocks: the
+// renewal is the same shared, detached check that precheck starts.
+func (m *IngressManager) refreshPrecheck(peer string, c *transport.TripleTransportClient, node, inst string, horizon time.Duration) {
+	key := m.precheckKey(peer, c, inst)
+	m.preMu.Lock()
+	defer m.preMu.Unlock()
+	used, ok := m.precheckUsed[key]
+	if !ok || time.Since(used) > precheckKeepWarm {
+		return
+	}
+	v, ok := m.cache[key]
+	if !ok || v.err != nil || time.Until(v.expires) > horizon || m.prechecks[key] != nil {
+		// Unknown, failed (left to expire), still fresh, or already renewing.
+		return
+	}
+	call := &precheckCall{done: make(chan struct{})}
+	m.prechecks[key] = call
+	m.wg.Add(1)
+	go m.runPrecheck(key, call, peer, c, node, inst)
 }
 
 // runPrecheck performs one shared precheck under a context detached from the
@@ -80,7 +126,11 @@ func (m *IngressManager) runPrecheck(key string, call *precheckCall, peer string
 	}
 	m.preMu.Lock()
 	for k, v := range m.cache {
-		if time.Now().After(v.expires) {
+		keep := v.expires
+		if v.err == nil {
+			keep = keep.Add(precheckStaleMax)
+		}
+		if time.Now().After(keep) {
 			delete(m.cache, k)
 		}
 	}

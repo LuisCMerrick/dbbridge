@@ -243,7 +243,7 @@ func (c *TripleTransportClient) DialWSSession(
 		writeIdle = c.tCfg.WS.WriteIdleTimeout
 	}
 
-	conn, resp, err := c.dialWSAbortable(handshakeCtx, wsURL, header)
+	conn, resp, err := c.dialWSAbortableSpare(handshakeCtx, wsURL, header, true)
 	cancel()
 	if err != nil {
 		if resp != nil {
@@ -315,9 +315,10 @@ func (c *TripleTransportClient) DialWSSession(
 	_ = conn.SetReadDeadline(time.Time{})
 
 	sessConn := &WSSessionConn{
-		conn:      conn,
-		streamID:  ready.StreamID,
-		writeIdle: writeIdle,
+		conn:          conn,
+		streamID:      ready.StreamID,
+		writeIdle:     writeIdle,
+		implicitReady: resp != nil && resp.Header.Get(protocol.HeaderImplicitReady) == "1",
 	}
 
 	return sessConn, &ready, nil

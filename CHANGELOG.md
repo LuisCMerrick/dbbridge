@@ -4,6 +4,18 @@
 
 The version of a build is set when it is built (`dbbridge version`).
 
+## [1.4.26.10.27.2] - 2026-10-27
+
+Protocol 1.4, wire compatible with 1.4.26.10.25 and 1.4.26.10.27 nodes in any mix; the new behavior is negotiated by a response header. Connection setup latency.
+
+- **A new connection costs 3 round trips instead of 7-8.** Before its first byte reached the database, each new local connection waited for a probe, create, a TCP (and TLS) handshake, the WebSocket upgrade, the ready ACK, the ping ACK and the data itself. On a simulated 100 ms RTT link a short HTTP request on a warm peer went from 712 ms to 306 ms (ws) / 406 ms (http-sse over HTTP/1.1).
+  - New sessions reuse the latest successful health-check probe (at most 1.5 x `healthcheck_interval`, at most 15 s old); the health check also runs once at start. A create refused for an instance mismatch (the egress restarted) probes again and succeeds.
+  - Each WebSocket session dial opens one spare connection (TCP+TLS) that the next session within 4 s upgrades on; unused, it closes after 4 s and is not renewed. A spare the server closed is detected, and a failed spare is replaced by a fresh dial.
+  - The egress announces `X-DBB-Implicit-Ready: 1` on the WS upgrade and the SSE event stream and activates a new session's data plane on the first upstream frame or FIN, so the ingress no longer waits for its ready ACK to return before sending. Against an older egress (no header) the ingress waits as before.
+  - A new session no longer waits for the first heartbeat ping and its ACK before carrying data (only a resume needs them).
+  - A successful WS precheck is renewed by the health check while WS is in use, and served up to 5 minutes stale while a background check renews it.
+- **Tests.** `TestWarmSessionRoundTrips` (latency-injecting proxy, asserts round trips), `TestReusedProbeInstanceMismatchRecovers`, `TestWSSpareDroppedByServer`, `TestActivateImplicit`.
+
 ## [1.4.26.10.27] - 2026-10-27
 
 Protocol 1.4, wire-compatible with 1.4.26.10.25 nodes. Data-plane performance work from the optimization review, and a stall fix.

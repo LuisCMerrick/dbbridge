@@ -28,7 +28,13 @@ type SSESubscriber struct {
 	failTimeout             time.Duration
 	pendingLF               bool // previous line ended in CR; skip one LF
 	lineHint                int  // capacity for the next buffered line (a declared frame line)
+	implicitReady           bool // the egress advertised protocol.HeaderImplicitReady
 }
+
+// ImplicitReady reports whether the egress activates the initial attach on
+// the first upstream frame (protocol.HeaderImplicitReady).
+func (s *SSESubscriber) ImplicitReady() bool { return s.implicitReady }
+
 type SSEEvent struct {
 	Event, ID, Data string
 	release         func()
@@ -100,7 +106,7 @@ func (c *TripleTransportClient) SubscribeEvents(ctx context.Context, sid, token,
 	if c.resources != nil {
 		codec = c.resources.Codec
 	}
-	return &SSESubscriber{client: c, codec: codec, sessionID: sid, sessionToken: token, epoch: ep, maxFrameSize: maxFrame, body: resp.Body, reader: bufio.NewReaderSize(resp.Body, 4096), ctx: ctx, failTimeout: c.tCfg.FailureDetectTimeout, releaseRequest: release}, nil
+	return &SSESubscriber{client: c, codec: codec, sessionID: sid, sessionToken: token, epoch: ep, maxFrameSize: maxFrame, body: resp.Body, reader: bufio.NewReaderSize(resp.Body, 4096), ctx: ctx, failTimeout: c.tCfg.FailureDetectTimeout, releaseRequest: release, implicitReady: resp.Header.Get(protocol.HeaderImplicitReady) == "1"}, nil
 }
 func (s *SSESubscriber) NextEvent() (*SSEEvent, error) {
 	timeout := s.failTimeout

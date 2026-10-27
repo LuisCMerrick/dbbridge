@@ -32,6 +32,8 @@ type TripleTransportClient struct {
 	tlsClientConfig                      *tls.Config
 	shared                               *clientShared
 	bindings                             sync.Map
+	wsSpare                              wsSpareState // guarded by mu
+	wsSpareClosed                        bool         // guarded by mu
 }
 
 func NewTripleTransportClientForURL(url, token string, cfg *config.TransportConfig, inst string, verify bool) *TripleTransportClient {
@@ -103,6 +105,7 @@ func (c *TripleTransportClient) getBinding(sid string, ep uint64) (binding, erro
 }
 
 func (c *TripleTransportClient) Close() {
+	c.dropWSSpare(true)
 	c.closeIdle(false)
 	c.closeIdle(true)
 }

@@ -128,7 +128,7 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 		s.writeSessionError(w, sess, e)
 		return
 	}
-	c, e := wsUpgrader.Upgrade(transport.WebSocketResponseWriter{ResponseWriter: w}, r, http.Header{"Cache-Control": []string{"no-store"}, protocol.HeaderInstanceID: []string{s.cfg.Node.InstanceID}})
+	c, e := wsUpgrader.Upgrade(transport.WebSocketResponseWriter{ResponseWriter: w}, r, http.Header{"Cache-Control": []string{"no-store"}, protocol.HeaderInstanceID: []string{s.cfg.Node.InstanceID}, protocol.HeaderImplicitReady: []string{"1"}})
 	if e != nil {
 		sess.DropTransport(ep)
 		return
@@ -240,6 +240,7 @@ func (s *Server) runWSSession(c *websocket.Conn, sess *session.Session, ep uint6
 			body.Reset(bodyLimit)
 		}
 	}
+	implicitChecked := false
 	var retry *time.Timer
 	defer func() {
 		if retry != nil {
@@ -281,6 +282,12 @@ func (s *Server) runWSSession(c *websocket.Conn, sess *session.Session, ep uint6
 			return
 		}
 		fep, off, data, e := protocol.DecodeWSFrame(b)
+		if e == nil && fep == ep && !implicitChecked {
+			// A first frame before the ready ACK activates the initial
+			// attach (protocol.HeaderImplicitReady); otherwise a no-op.
+			implicitChecked = true
+			_ = sess.ActivateImplicit(ep, stream)
+		}
 		if e != nil || fep != ep || sess.CheckStream(ep, stream, true) != nil {
 			releaseAll()
 			sess.CloseStream(ep, stream)

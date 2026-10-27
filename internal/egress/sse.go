@@ -37,6 +37,7 @@ func (s *Server) handleSSEEvents(w http.ResponseWriter, r *http.Request, sess *s
 	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store, no-transform")
 	w.Header().Set("X-Accel-Buffering", "no")
+	w.Header().Set(protocol.HeaderImplicitReady, "1")
 	rc := http.NewResponseController(w)
 	// The stream outlives the request read deadline; liveness is enforced by
 	// heartbeats (watchControl) and write-idle deadlines instead.
@@ -112,6 +113,7 @@ func (s *Server) handleUp(w http.ResponseWriter, r *http.Request, sess *session.
 	atomic.AddInt64(&observability.DefaultMetrics.PostCountTotal, 1)
 	ep, _ := protocol.Offset(r.URL.Query().Get("epoch"))
 	stream := r.Header.Get(protocol.HeaderStreamID)
+	_ = sess.ActivateImplicit(ep, stream) // protocol.HeaderImplicitReady
 	if e := sess.CheckStream(ep, stream, true); e != nil {
 		closeIfUnread(w, r)
 		s.writeSessionError(w, sess, e)

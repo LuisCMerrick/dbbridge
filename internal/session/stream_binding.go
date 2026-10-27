@@ -108,6 +108,27 @@ func (s *Session) activateLocked(epoch uint64, id string) error {
 	return nil
 }
 
+// ActivateImplicit activates the data plane of a session's initial attach
+// when an upstream frame or FIN names its current stream before the ready ACK
+// arrived (see protocol.HeaderImplicitReady). It is a no-op once active and
+// refuses everything but the initial attach: a resumed epoch still needs its
+// ready ACK.
+func (s *Session) ActivateImplicit(ep uint64, id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.dataPlaneActive && ep == s.Epoch && id == s.currentStreamID {
+		return nil
+	}
+	if !s.initialAttachPendingLocked() {
+		return ErrNotActive
+	}
+	if e := s.activateLocked(ep, id); e != nil {
+		return e
+	}
+	s.signalLocked()
+	return nil
+}
+
 // StartUnattachedTimer fixes the absolute initial attach deadline
 // (unattached_timeout) for the current epoch. ReserveStream and ready
 // activation refuse once it has passed, and the timer itself closes the session

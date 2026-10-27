@@ -4,6 +4,18 @@
 
 构建的版本号在构建时确定（`dbbridge version`）。
 
+## [1.4.26.10.27.2] - 2026-10-27
+
+协议 1.4，与 1.4.26.10.25 / 1.4.26.10.27 节点线上兼容（新旧节点可任意混用，新增行为靠响应头协商）。新连接首包延迟优化。
+
+- **新连接从约 7–8 个往返降到 3 个。** 以前每个新的本地连接在第一个字节到达数据库前要与 Egress 往返：probe、create、TCP（+TLS）握手、WebSocket 升级、ready ACK、ping ACK，再加数据本身。100 ms RTT 的模拟链路上，热状态下一个短 HTTP 请求从 712 ms 降到 306 ms（ws）/ 406 ms（http-sse，HTTP/1.1）。
+  - 新会话复用健康检查最近一次成功的探测结果（≤ 1.5 × `healthcheck_interval`，≤ 15 s），健康检查改为启动时立即执行一次。Egress 重启导致实例不符时，create 被拒后重新探测再建，不会失败。
+  - 每次 WebSocket 会话拨号后预建一条备用连接（TCP+TLS），4 s 内的下一个会话直接用它升级；不用则 4 s 后关闭、不续建。被服务端关掉的备用连接会被识别，失败时自动改用全新拨号。
+  - Egress 在 WS 升级 / SSE 事件流应答中声明 `X-DBB-Implicit-Ready: 1`，首个上行帧或 FIN 即可激活新会话的数据面，Ingress 不再等 ready ACK 返回才发数据。旧版 Egress 不带该头，Ingress 照旧等待。
+  - 新会话不再等待第一个心跳 ping 及其确认才开始传数据（只在恢复时需要）。
+  - WS 预检成功结果在使用期间由健康检查提前续期，过期 5 分钟内先用旧结果、后台重检，安静一段时间后的第一个连接不再等预检。
+- **测试。** 新增 `TestWarmSessionRoundTrips`（延迟注入代理，按 RTT 数断言）、`TestReusedProbeInstanceMismatchRecovers`、`TestWSSpareDroppedByServer`、`TestActivateImplicit`。
+
 ## [1.4.26.10.27] - 2026-10-27
 
 协议 1.4，与 1.4.26.10.25 节点线上兼容。优化评审中的数据面性能改进，以及一个卡顿修复。

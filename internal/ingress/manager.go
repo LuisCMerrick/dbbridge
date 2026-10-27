@@ -42,6 +42,8 @@ type IngressManager struct {
 	cleanupCtx       context.Context
 	cleanupCancel    context.CancelFunc
 	probeFlights     map[string]*probeCall
+	probeCache       map[string]probeCacheEntry
+	precheckUsed     map[string]time.Time
 	probeSlots       map[string]chan struct{}
 	preMu            sync.Mutex
 	prechecks        map[string]*precheckCall
@@ -59,6 +61,8 @@ func NewIngressManager(c *config.Config, a *auth.Authenticator) *IngressManager 
 	m.ctx, m.cancel = context.WithCancel(context.Background())
 	m.cleanupCtx, m.cleanupCancel = context.WithCancel(context.Background())
 	m.probeFlights = map[string]*probeCall{}
+	m.probeCache = map[string]probeCacheEntry{}
+	m.precheckUsed = map[string]time.Time{}
 	for _, p := range c.Peers {
 		id := p.ID
 		cl := transport.NewTripleTransportClient(&p, &c.Transport, c.Node.InstanceID)

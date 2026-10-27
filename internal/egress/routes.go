@@ -112,6 +112,7 @@ func (s *Server) handleAck(w http.ResponseWriter, r *http.Request, sess *session
 
 func (s *Server) handleFin(w http.ResponseWriter, r *http.Request, sess *session.Session) {
 	ep, _ := protocol.Offset(r.URL.Query().Get("epoch"))
+	_ = sess.ActivateImplicit(ep, r.Header.Get(protocol.HeaderStreamID)) // protocol.HeaderImplicitReady
 	if e := sess.CheckStream(ep, r.Header.Get(protocol.HeaderStreamID), true); e != nil {
 		closeIfUnread(w, r)
 		s.writeSessionError(w, sess, e)

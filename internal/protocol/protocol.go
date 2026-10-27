@@ -28,6 +28,13 @@ const (
 	HeaderWSNonce         = "X-DBB-Nonce"
 	HeaderWSSessionID     = "X-DBB-Session-ID"
 	HeaderWSEpoch         = "X-DBB-Epoch"
+	// HeaderImplicitReady on the WS 101 / SSE events response says the
+	// egress activates an initial attach's data plane on the first upstream
+	// frame or FIN naming the stream, so the ingress may send without waiting
+	// for its ready ACK to return. Only the ready message carries the
+	// stream ID, so such a frame proves the ready was received. An egress
+	// without the header requires the ready ACK first.
+	HeaderImplicitReady = "X-DBB-Implicit-Ready"
 )
 
 // Subprotocol for WebSocket

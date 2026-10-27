@@ -122,7 +122,7 @@ func (s *ingressSession) recover(cause error, strategy string) (success bool) {
 		if req != nil {
 			policy = req.Transport.Mode
 		}
-		sel, e := s.m.chooseUntried(ctx, s.p, s.owner, policy, false, attempted)
+		sel, e := s.m.chooseUntried(ctx, s.p, s.owner, policy, false, false, attempted)
 		c, ep, mode := sel.c, sel.ep, sel.mode
 		if e != nil {
 			if fatalError(e) {
