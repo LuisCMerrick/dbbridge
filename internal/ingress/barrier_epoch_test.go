@@ -173,6 +173,11 @@ func TestTLSDataAndControlProtocols(t *testing.T) {
 			if mode == "ws" && observed["ws"] != 1 || mode == "http-sse" && (observed["events"] != 2 || observed["up"] != 2) {
 				t.Fatalf("data protocols: %v", observed)
 			}
+			// Wait up to 2s for the explicit ACK to arrive on busy CI runners.
+			until := time.Now().Add(2 * time.Second)
+			for atomic.LoadInt64(&observability.DefaultMetrics.ExplicitAckTotal) <= beforeACK && time.Now().Before(until) {
+				time.Sleep(10 * time.Millisecond)
+			}
 			if atomic.LoadInt64(&observability.DefaultMetrics.ExplicitAckTotal) <= beforeACK {
 				t.Fatal("ACK metric did not update")
 			}
