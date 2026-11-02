@@ -1,3 +1,6 @@
+// Disable Go's default MPTCP listeners (GODEBUG multipathtcp, Go 1.24+).
+//
+//go:debug multipathtcp=0
 package main
 
 import (

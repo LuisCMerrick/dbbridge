@@ -3,6 +3,7 @@ package observability
 import (
 	"bytes"
 	"context"
+	"dbbridge/internal/netlisten"
 	"dbbridge/internal/resource"
 	"fmt"
 	"io"
@@ -128,7 +129,7 @@ func (s *AdminServer) Start() error {
 		return fmt.Errorf("admin server already started on %s", s.listenAddr)
 	}
 
-	ln, err := net.Listen("tcp", s.listenAddr)
+	ln, err := netlisten.TCP(s.listenAddr)
 	if err != nil {
 		return fmt.Errorf("admin listen failed on %s: %w", s.listenAddr, err)
 	}

@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"dbbridge/internal/auth"
 	"dbbridge/internal/config"
+	"dbbridge/internal/netlisten"
 	"dbbridge/internal/resource"
 	"dbbridge/internal/session"
 	"dbbridge/internal/transport"
@@ -132,7 +133,7 @@ func (s *Server) Start() error {
 		return errors.New("egress server already started")
 	}
 	srv := &http.Server{Handler: s.Handler(), ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 90 * time.Second, MaxHeaderBytes: 16 << 10, ConnContext: guardConnContext}
-	ln, e := net.Listen("tcp", s.cfg.HTTP.Listen)
+	ln, e := netlisten.TCP(s.cfg.HTTP.Listen)
 	if e != nil {
 		return e
 	}
