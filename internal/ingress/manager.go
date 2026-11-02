@@ -3,6 +3,7 @@ package ingress
 import (
 	"context"
 	"crypto/rand"
+	"dbbridge/internal/netlisten"
 	"encoding/hex"
 	"errors"
 	"log/slog"
@@ -118,7 +119,7 @@ func (m *IngressManager) Start() error {
 	}
 	opened := make([]net.Listener, 0, len(m.cfg.Listeners))
 	for _, l := range m.cfg.Listeners {
-		ln, e := net.Listen("tcp", l.Listen)
+		ln, e := netlisten.TCP(l.Listen)
 		if e != nil {
 			for _, x := range opened {
 				x.Close()

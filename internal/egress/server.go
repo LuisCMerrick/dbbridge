@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"dbbridge/internal/auth"
 	"dbbridge/internal/config"
+	"dbbridge/internal/netlisten"
 	"dbbridge/internal/resource"
 	"dbbridge/internal/session"
 	"dbbridge/internal/transport"
@@ -193,7 +194,7 @@ func (s *Server) Start() error {
 		s.started = true
 		return nil
 	}
-	ln, e := net.Listen("tcp", s.cfg.HTTP.Listen)
+	ln, e := netlisten.TCP(s.cfg.HTTP.Listen)
 	if e != nil {
 		if s.tunnelLn != nil {
 			_ = srv.Close()
