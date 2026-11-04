@@ -377,7 +377,7 @@ func (h *Hub) Serve(w http.ResponseWriter, r *http.Request, authenticated func()
 	}
 	_ = c.NetConn().SetDeadline(time.Time{})
 	conn := newWSConn(c, Addr("tunnel/"+q.id))
-	sess, err := smux.Client(conn, smuxConfig(h.tcfg))
+	sess, err := smux.Client(guardConn(conn, ReceiveBuffer(h.tcfg), q.id), smuxConfig(h.tcfg))
 	if err != nil {
 		_ = conn.Close()
 		if release != nil {

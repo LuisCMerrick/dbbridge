@@ -417,7 +417,7 @@ func (c *Client) dialMode(ep config.EndpointConfig, mode string) (*clientTunnel,
 		release()
 		return nil, err
 	}
-	sess, err := smux.Server(conn, smuxConfig(&c.cfg.Transport))
+	sess, err := smux.Server(guardConn(conn, ReceiveBuffer(&c.cfg.Transport), id), smuxConfig(&c.cfg.Transport))
 	if err != nil {
 		_ = conn.Close()
 		release()
@@ -499,9 +499,18 @@ func (c *Client) dialWS(ep config.EndpointConfig, id string) (*websocket.Conn, e
 }
 
 // serve delivers the streams of t to the listener until t ends.
+//
+// The accept loop never waits for the listener: a stream is charged to the
+// codec budget as soon as smux hands it over and is delivered from its own
+// goroutine. A slow listener would otherwise leave streams in smux's accept
+// backlog, where their data is buffered but not yet charged to any budget.
 func (c *Client) serve(t *clientTunnel) {
+	ctx, cancel := context.WithCancel(c.ctx)
+	var deliveries sync.WaitGroup
 	defer func() {
+		cancel()
 		_ = t.sess.Close()
+		deliveries.Wait()
 		c.mu.Lock()
 		delete(c.live, t.id)
 		close(c.wake)
@@ -531,12 +540,17 @@ func (c *Client) serve(t *clientTunnel) {
 			_ = st.Close()
 			continue
 		}
-		if err := c.ln.Deliver(c.ctx, resource.LeaseConn(ownStream(st), release)); err != nil {
-			release()
-			_ = st.Close()
-			if errors.Is(err, net.ErrClosed) || c.ctx.Err() != nil {
-				return
+		deliveries.Add(1)
+		go func() {
+			defer deliveries.Done()
+			if err := c.ln.Deliver(ctx, resource.LeaseConn(ownStream(st), release)); err != nil {
+				release()
+				_ = st.Close()
+				if errors.Is(err, net.ErrClosed) || c.ctx.Err() != nil {
+					// The listener or the client stopped: end the tunnel.
+					_ = t.sess.Close()
+				}
 			}
-		}
+		}()
 	}
 }

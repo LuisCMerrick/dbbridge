@@ -129,24 +129,38 @@ func (h *Hub) lookup(r *http.Request, id string, authenticated func()) (*Tunnel,
 	if authenticated != nil {
 		authenticated()
 	}
-	// The tunnel is looked up by ID across every reverse peer: peers that
-	// share a token cannot be told apart by it, and the tunnel's own digest
-	// below binds the request to the token the tunnel was opened with.
-	h.mu.Lock()
+	// Tunnel IDs are chosen by the database side and are unique only
+	// within a peer, so several peers can hold the same ID. Peers that
+	// share a token cannot be told apart by it, so every tunnel with this
+	// ID is considered: the request belongs to the one opened with the
+	// presented token by the presented instance. Stopping at the first ID
+	// match would let a peer that registers another identity's tunnel ID
+	// make that identity's requests fail at random (map order).
+	instance := r.Header.Get(protocol.HeaderInstanceID)
 	var t *Tunnel
-	for _, p := range h.peers {
-		if t = p.tunnels[id]; t != nil {
-			break
+	seen, tokenOK := false, false
+	h.mu.Lock()
+	for _, pid := range h.peerIDs() {
+		c := h.peers[pid].tunnels[id]
+		if c == nil {
+			continue
+		}
+		seen = true
+		if subtle.ConstantTimeCompare(c.digest[:], digest[:]) != 1 {
+			continue
+		}
+		tokenOK = true
+		if t == nil && c.Instance == instance {
+			t = c
 		}
 	}
 	h.mu.Unlock()
-	if t == nil || t.pipe == nil || t.sess.IsClosed() {
+	switch {
+	case !seen:
 		return nil, refuse(404, protocol.ErrTunnelNotFound, "tunnel not found", false)
-	}
-	if subtle.ConstantTimeCompare(t.digest[:], digest[:]) != 1 {
+	case !tokenOK:
 		return nil, refuse(401, protocol.ErrUnauthorized, "unauthorized", false)
-	}
-	if r.Header.Get(protocol.HeaderInstanceID) != t.Instance {
+	case t == nil || t.pipe == nil || t.sess.IsClosed():
 		return nil, refuse(404, protocol.ErrTunnelNotFound, "tunnel not found", false)
 	}
 	return t, nil
@@ -202,7 +216,7 @@ func (h *Hub) openHTTP(w http.ResponseWriter, r *http.Request, id string, authen
 		return
 	}
 	p := newPipe(pipeCapacity, Addr("hub"), Addr("tunnel/"+q.id))
-	sess, err := smux.Client(p, smuxConfig(h.tcfg))
+	sess, err := smux.Client(guardConn(p, ReceiveBuffer(h.tcfg), q.id), smuxConfig(h.tcfg))
 	if err != nil {
 		_ = p.Close()
 		if release != nil {
